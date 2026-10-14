@@ -23,11 +23,11 @@ OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "build" / "acm-iconset"
 
 # The names `build-icon.py` expects. It derives 24, 48, 64 and 256 from the 512 by halving.
 SIZES = {
-    "favicon-16x16.png": 16,
-    "favicon-32x32.png": 32,
-    "favicon-128.png": 128,
-    "apple-touch-icon-144x144.png": 144,
-    "icon512.png": 512,
+    "mark-16.png": 16,
+    "mark-32.png": 32,
+    "mark-128.png": 128,
+    "mark-144.png": 144,
+    "mark-512.png": 512,
 }
 SUPERSAMPLE = 4
 

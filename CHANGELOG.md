@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file, together with t
 [README](README.md). The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.18] — 2026-10-13
+
+### Changed
+
+- **The supplied artwork is gone from the repository entirely; the mark is the only source now.**
+  Deleted: the whole `iconset/` export (every .ico and .png in it, plus the snippet that referenced
+  them) and everything derived from it — the `npx tauri icon` leftovers (`Square*Logo.png`,
+  `StoreLogo.png`, `icon.icns`: about 380 KB of unused tiles for a Windows-only build).
+  `build-icon.py` no longer defaults to that export; it reads `build/acm-iconset/`, which only
+  `build-mark.py` produces from `assets/acm-icon.svg`. Even the intermediate renders were renamed
+  `mark-*`, because a file called `favicon-128.png` in this repository is a claim about whose
+  artwork it is.
+
+- **The page asks for `mark-*` paths, and that is the bug fix rather than tidying.** A browser
+  caches a favicon **by URL**, so replacing the bytes at an existing path leaves the old picture on
+  screen indefinitely. That is exactly what was happening: every shipped icon already measured as
+  the mark — 18.5 to 22.2 percent of the canvas opaque, against 92.7 percent for the supplied tile —
+  while the taskbar went on drawing the tile from cache, because the page still asked for
+  `/icon-32.png`. Measured, not assumed: opaque coverage distinguishes the two designs
+  unambiguously, and it said the files had been right for several versions. New paths are the only
+  cache-bust a favicon respects. The server accepts both names so an already-open window can still
+  be closed cleanly, and the old-named files were deleted rather than left to be served.
+
 ## [0.15.17] — 2026-10-13
 
 ### Fixed

@@ -402,7 +402,10 @@ createServer(async (req, res) => {
       return json(res, { state: "error", hint: String(error?.message ?? error) });
     }
   }
-  if (/^\/icon(-\d+)?\.(png|ico)$/.test(url.pathname)) {
+  // `mark` is the current set and `icon` the retired one: a browser caches a favicon by URL, so the
+  // set had to move to new paths for the change to be visible at all. Both are accepted because an
+  // already-open window may still be asking for the old names while it is being closed.
+  if (/^\/(icon|mark)(-\d+)?\.(png|ico)$/.test(url.pathname)) {
     // The page's icon set, which is what a browser app window wears. Served from the same
     // directory as the page so a browser window and the Tauri widget can share one image
     // rather than carrying the browser's default globe. The pattern is a whitelist — only

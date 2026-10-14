@@ -7,12 +7,17 @@
      sizes are DECLARED rather than left to the browser: a Chromium app window renders the
      favicon through its own path at a size it picks, and offering several bitmaps lets it take
      one at that resolution instead of scaling a single image down to mush. The .ico is there
-     because Windows favicon handling has always understood it. -->
-<link rel="icon" type="image/png" sizes="16x16" href="/icon-16.png" />
-<link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png" />
-<link rel="icon" type="image/png" sizes="48x48" href="/icon-48.png" />
-<link rel="icon" type="image/png" sizes="256x256" href="/icon-256.png" />
-<link rel="icon" type="image/x-icon" href="/icon.ico" />
+     because Windows favicon handling has always understood it.
+
+     They are named `mark-*`, which they never were before, and that is the whole point: a browser
+     caches a favicon BY URL, so replacing the bytes at an existing path leaves the old picture on
+     screen indefinitely — which is exactly what happened when the mark changed and the taskbar
+     did not. A new path is the only cache-bust a favicon respects. -->
+<link rel="icon" type="image/png" sizes="16x16" href="/mark-16.png" />
+<link rel="icon" type="image/png" sizes="32x32" href="/mark-32.png" />
+<link rel="icon" type="image/png" sizes="48x48" href="/mark-48.png" />
+<link rel="icon" type="image/png" sizes="256x256" href="/mark-256.png" />
+<link rel="icon" type="image/x-icon" href="/mark.ico" />
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }

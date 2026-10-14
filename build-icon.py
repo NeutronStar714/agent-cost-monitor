@@ -1,9 +1,13 @@
-"""Assemble the icon sets from `iconset/`, using the sizes that are actually there.
+"""Assemble the icon sets from the rendered mark, in `build/acm-iconset/`.
 
-The set carries exact 16, 24, 32, 128, 144 and 512 bitmaps, plus a small .ico. Nothing here
-invents a size it was given: 16, 24, 32 and 128 are taken as-is, and only the sizes the set does
-not carry (48, 64, 256) are reduced from the 512 master by halving, so every step is an exact 2:1
-rather than one careless jump.
+The chain is: `assets/acm-icon.svg` (the design, the only place the geometry lives) ->
+`build-mark.py` (renders it at exact pixel sizes) -> this script (assembles the sets the bundle and
+the page read). Nothing here invents a size it was given: 16, 32, 128 and 144 are taken as-is, and
+only the sizes the mark is not rendered at (24, 48, 64, 256) are derived from the 512 master by
+halving, so every step is an exact 2:1 rather than one careless jump.
+
+No other artwork exists in this repository to fall back on, deliberately: the mark is the only
+source, and `build-mark.py` is the only producer.
 
 Why the *window* icon is the 128 and not the 512 — the thing that decides whether a taskbar looks
 blurred: a running window's taskbar button is drawn from the WINDOW's own large icon, at the
@@ -31,13 +35,13 @@ WINDOW = ROOT / "window"
 SIZES = [16, 24, 32, 48, 64, 128, 256]
 
 # Which file in the set holds which exact size. Anything not listed is derived.
-ICONSET = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "iconset"
+ICONSET = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "build" / "acm-iconset"
 SET_FILES = {
-    16: "favicon-16x16.png",
-    32: "favicon-32x32.png",
-    128: "favicon-128.png",
-    144: "apple-touch-icon-144x144.png",
-    512: "icon512.png",
+    16: "mark-16.png",
+    32: "mark-32.png",
+    128: "mark-128.png",
+    144: "mark-144.png",
+    512: "mark-512.png",
 }
 MASTER_SIZE = 512
 
@@ -166,13 +170,20 @@ save(ICONS / "128x128@2x.png", images[256])
 # exact 2:1 of it. `include_bytes!` compiles this in, so the widget has to be rebuilt to change it.
 save(ICONS / "icon.png", images[128])
 
-save(WINDOW / "icon-16.png", images[16])
-save(WINDOW / "icon-32.png", images[32])
-save(WINDOW / "icon-48.png", images[48])
-save(WINDOW / "icon-256.png", images[256])
-save(WINDOW / "icon.png", images[128])
-(WINDOW / "icon.ico").write_bytes(ico)
-written.append(WINDOW / "icon.ico")
+# The page's set, under NAMES THAT HAVE NEVER BEEN USED BEFORE.
+#
+# A browser caches a favicon by URL, so replacing the bytes at an existing path leaves the old
+# picture on screen indefinitely — which is exactly what happened here: the files were correct and
+# the taskbar was not, because it was still asking for `/icon-32.png`. A new path is the only
+# reliable cache-bust, so the window's set is `mark-*` from now on, and the old names are deleted
+# rather than left behind to be served to anything that remembers them.
+save(WINDOW / "mark-16.png", images[16])
+save(WINDOW / "mark-32.png", images[32])
+save(WINDOW / "mark-48.png", images[48])
+save(WINDOW / "mark-256.png", images[256])
+save(WINDOW / "mark.png", images[128])
+(WINDOW / "mark.ico").write_bytes(ico)
+written.append(WINDOW / "mark.ico")
 
 # Read every written file back. A ladder that silently produced a 1x1, or an .ico that lost an
 # entry, is exactly the kind of failure that only shows up as "the icon looks wrong" much later.
