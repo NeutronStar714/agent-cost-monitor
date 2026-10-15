@@ -4,6 +4,57 @@ All notable changes to this project are documented in this file, together with t
 [README](README.md). The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] — 2026-10-13
+
+Merged from a fork (PR #1, CaiJw147): the tray, and two pricing corrections. The entries below are
+written from that work's commits and its tests — the code is theirs, the documentation is mine.
+It arrived with no changelog entry and no version bump, which is why this one exists.
+
+### Added
+
+- **`acm tray` — the figures in the notification area, between the panel and the status line.** A
+  third renderer over the same engine: it prices nothing and reads no transcript of its own, it
+  draws what the daemon already computes.
+
+  **The icon is the figure.** The current turn's cost, as at most three glyphs, taken as geometry
+  and scaled into the 16px box the shell actually asks for rather than a larger bitmap for the shell
+  to resample — and grown taller than it is wide, because a condensed figure reads better than a
+  small one. White on a dark taskbar and dark on a light one (the theme is re-read on every redraw),
+  turning amber once the burn rate passes `warnPerHour`, which is what the window's dot does.
+
+  - It **shows itself only while an agent is behind it** — a transcript or rollout written recently,
+    or an open window polling the daemon — and takes itself away after five minutes of quiet. A turn
+    in flight always counts as presence, so a ten-minute build cannot make the figure vanish
+    mid-work.
+  - Its menu reports the **last completed turn**, the session total and both burn rates, and says
+    whether a window is open. Where a host records its own turn bounds the menu says so; where it
+    does not, the figure is marked as the shorter call-span estimate rather than passed off as the
+    turn.
+  - **One instance, enforced by a named mutex** rather than a lock file, so a crashed tray cannot
+    lock out the next one. `acm tray --install` writes a Startup entry as a `.vbs`, so no console
+    flashes at login; `acm uninstall` removes it and stops the tray.
+  - Tray reads identify themselves (`client=tray`) so they are not counted as a window by
+    `windowPolledAt`, which is the field that says whether a window is open.
+
+### Fixed
+
+- **Each Codex call is billed once.** A rollout can carry the same usage more than once; the engine
+  now counts it a single time (`test/codex-token-usage.test.js`).
+- **Decorated model ids are priced.** A name carrying a suffix or a vendor prefix resolves to its
+  base price instead of reading as unpriced (`test/cost-spellings.test.js`).
+- **`window/tray.ps1` asked for `icon.ico`**, a file this project had already renamed to `mark.ico`
+  when a browser-cached favicon was showing stale artwork. The tray's own fallback kept it working,
+  which is exactly what hid the mistake: it had been displaying a generic Windows icon instead of
+  the mark.
+
+### Notes
+
+- The tray is Windows-only by nature — the icon is a Windows shell object — and needs PowerShell 7
+  or Windows PowerShell. It starts the daemon itself when nothing answers, so a tray on its own
+  still has figures to show.
+- Its menu labels are in Chinese, as the contribution arrived. Worth a decision rather than a
+  silence: the rest of the interface is English.
+
 ## [0.15.18] — 2026-10-13
 
 ### Changed

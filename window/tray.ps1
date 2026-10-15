@@ -42,7 +42,11 @@ $inv = [System.Globalization.CultureInfo]::InvariantCulture
 $cache = Join-Path $env:USERPROFILE ".cache\agent-cost-monitor"
 $logFile = Join-Path $cache "tray.log"
 $pidFile = Join-Path $cache "tray.pid"
-$iconFile = Join-Path $PSScriptRoot "icon.ico"
+# `mark.ico`, not `icon.ico`: the window's icon set was renamed when a browser-cached favicon kept
+# drawing the previous artwork, and this line was written before that. It failed softly — the line
+# that loads it falls back to SystemIcons.Application — so the tray showed a generic Windows icon
+# instead of the mark, which is exactly the kind of quiet regression a fallback hides.
+$iconFile = Join-Path $PSScriptRoot "mark.ico"
 $launcher = Join-Path (Split-Path -Parent $PSScriptRoot) "window\launch.mjs"
 
 # A named mutex, not a lock file: it is released by the operating system if this process is

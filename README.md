@@ -6,6 +6,10 @@ Live cost and "burn rate" for AI coding agents, wherever the agent shows you som
 - **Everything else** — Codex, DSH, or Claude Code when you want the picture rather than a
   number — gets a **Tauri window**: a small always-on-top widget with the same figures and a
   burn chart.
+- **`acm tray`** puts a single figure in the Windows notification area: the current turn's cost
+  drawn *into* the icon, with the last completed turn, the session total and both burn rates in its
+  menu. It shows itself while an agent is running and takes itself away after five minutes of quiet.
+  `acm tray --install` adds it at login.
 
 That status line is the *only* place this project is a single row, and it is **Claude Code
 CLI only**:
@@ -195,6 +199,16 @@ and only `acm launch --new` opens a second one.
     minutes and never overwrites a working card. If you need a model the fetch cannot reach, the
     cache is a plain JSON file at `~/.cache/spend-watch/claude-pricing.json` and can be seeded by
     hand.
+
+16. **The tray is Windows-only, and its menu is in Chinese.** The notification-area icon is a
+    Windows shell object, so `acm tray` cannot exist elsewhere; it needs PowerShell 7 or Windows
+    PowerShell, and it asks the daemon for every figure rather than reading anything itself —
+    starting one when nothing answers. Its labels arrived in Chinese with the contribution while the
+    rest of the interface is English, which is a decision to make rather than a bug to fix.
+17. **The tray shows the last turn that *finished*,** never the one still running, and marks a
+    figure as the shorter call-span estimate when the host does not record its own turn bounds. A
+    total that is still climbing, under a label that calls it final, is the one thing it must not
+    show.
 
 ## Licence
 
