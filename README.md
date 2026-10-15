@@ -108,6 +108,10 @@ have to find.
   passes `warnPerHour`.
 - **The menu** carries what will not fit: the last turn that *finished*, the session total, both
   burn rates, the host and model, the rate-card status, and shortcuts to open the window or quit.
+- **Hovering** gives one line — `acm · [host] · [this turn] · [avg. burn] · [session]` — with the
+  session at two decimals, because a running total is the figure people compare. It uses 48
+  characters of the shell's 63, and when it does not fit, fields are dropped from the least
+  important end rather than the line being cut: a truncated figure reads as a smaller figure.
 - **It shows itself when there is something to say** — while a turn is running, or while a window
   is open — and hides after five minutes of quiet. The icon is not permanent furniture.
 - **`acm tray --install`** writes a login entry; **`acm tray --status`** says whether one is

@@ -457,7 +457,9 @@ function Refresh-Tray {
 
     Add-Info ("acm · " + $source + " · " + $model)
     if ($null -eq $completed) {
-      Add-Info "Last completed turn: — (this session has not finished one yet)"
+      # Not "this session has not finished one yet": DSH's panel reports only the turn it is
+      # showing, so while one is running nothing finished is reported even though earlier turns did.
+      Add-Info "Last completed turn: — (no finished turn is being reported)"
     } else {
       # The two bases are different measurements and the menu says which one it is showing: a
       # host that records its own turn bounds gives the turn's real length, and one that does not
@@ -486,13 +488,26 @@ function Refresh-Tray {
     Add-Action "Refresh" { Refresh-Tray }
     Add-Action "Quit (removes this icon)" { Stop-Tray }
 
-    # The tooltip is capped at 63 characters by the shell and throws past it, so three figures
-    # and the host they belong to is the whole budget. The first of the three is the one on the
-    # icon, so hovering explains what the number is.
-    $tip = "acm" + $(if ($over) { " !over" } else { "" }) + " · " + $source + " · this turn " + (Money $active.turnCost $symbol) +
-      " · last turn " + $(if ($null -eq $completed) { "-" } else { Money $completed.cost $symbol }) +
-      " · session " + (Money $active.sessionCost $symbol)
-    if ($tip.Length -gt 60) { $tip = $tip.Substring(0, 60) }
+    # acm · host · this turn · average burn · session — the four things worth having in one line,
+    # with the session at two decimals because a running total is the figure people compare.
+    #
+    # The shell caps a notification-area tooltip at 63 characters and throws past it. The version
+    # before this one cut the string at 60, which cut a NUMBER in half: "session ¥38." is what that
+    # looked like, and a truncated figure reads as a smaller figure — worse than showing fewer
+    # fields. So fields are dropped from the least important end until it fits: the host first, then
+    # the average burn. The turn and the session are what the row is for.
+    $parts = @(
+      "acm",
+      $source,
+      (Money $active.turnCost $symbol),
+      ("avg " + (Burn $active.averageBurn $symbol)),
+      ("session " + (Money $active.sessionCost $symbol))
+    )
+    while (($parts -join " · ").Length -gt 60 -and $parts.Count -gt 3) {
+      $parts = @($parts[0]) + $parts[2..($parts.Count - 1)]
+    }
+    $tip = $parts -join " · "
+    if ($tip.Length -gt 60) { $tip = $tip.Substring(0, 59) + "…" }
     $icon.Text = $tip
     # Only when it changes, so `acm tray --status`-style inspection of the log answers "what is
     # the icon showing right now" without the log filling with one identical line per tick.

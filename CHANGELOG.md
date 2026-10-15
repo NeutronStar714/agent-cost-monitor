@@ -4,6 +4,34 @@ All notable changes to this project are documented in this file, together with t
 [README](README.md). The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.11] — 2026-10-15
+
+### Fixed
+
+- **The tray tooltip cut a figure in half.** The row was 68 characters — `acm !over · dsh · this turn
+  ¥0.30 · last turn ¥0.30 · session ¥38.24` — and the code cut it at 60 with `Substring`, so what
+  appeared was `… session ¥38.`. A truncated number reads as a *smaller* number, which is worse than
+  showing fewer fields: the two decimals were never missing, they were sliced off. Fields are now
+  dropped from the least important end until it fits — the host first, then the average burn — and
+  only a string still too long is ellipsised, deliberately, at a character boundary.
+
+### Changed
+
+- **The row is now `acm · [host] · [this turn] · [avg. burn] · [session]`**, at 48 characters with
+  room to spare, and the session always at two decimals because a running total is the figure people
+  compare. `!over` is gone from it, as asked; the icon still turns amber, and the menu still spells
+  the rates out.
+
+### Notes
+
+- The duplicate figures reported alongside this were not a bug: `dshCompleted` in `window/serve.mjs`
+  returns `null` unless the turn has ended, so the field is honest — what was seen was the momentary
+  state after a turn ends, when the just-finished turn is both the number on the icon and the last
+  completed one. That field has left the row anyway.
+- One wording fix while there: the menu said "this session has not finished one yet" when nothing was
+  reported, which is untrue for DSH, whose panel reports only the turn it is showing. It now says "no
+  finished turn is being reported".
+
 ## [0.16.10] — 2026-10-15
 
 ### Changed
