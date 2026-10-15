@@ -206,7 +206,15 @@ async function fromDsh(now) {
       models: turn.models ?? [],
       series: turn.series ?? [],
       pollMs: CONFIG.pollMs,
-      warnPerHour: cost.warnPerHour ?? WARN,
+      // ACM's own number, not the plugin's. `acm warn` exists so that there is one place to set what
+      // ACM draws, and a DSH session used to ignore it: this route reported the plugin's
+      // `burnWarnPerHour` in preference, so changing ACM's value visibly did nothing whenever the
+      // figures came from dsh — which is exactly what a broken setting looks like. Measured: with
+      // ACM's config at 5 the daemon still answered 15, because the plugin says 15. The source's
+      // value is still reported, beside it, so nothing is hidden and a UI could follow it if it
+      // ever wanted to.
+      warnPerHour: WARN,
+      sourceWarnPerHour: cost.warnPerHour ?? undefined,
       unpriced: session.unpricedTurns ?? 0,
       approximate: false,
       note: "live from the DSH host plugin",

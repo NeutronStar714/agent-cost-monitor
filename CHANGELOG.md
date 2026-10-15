@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file, together with t
 [README](README.md). The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.7] — 2026-10-15
+
+### Fixed
+
+- **`acm warn` did nothing while the figures came from DSH.** That route reported the plugin's own
+  `burnWarnPerHour` in preference to ACM's `warnPerHour`, so changing ACM's value was invisible on a
+  dsh session — measured directly: with the config set to 5, the daemon still answered 15, because
+  the plugin says 15. The live re-read added in 0.16.6 was working the whole time; it was being
+  overridden, which is a much harder thing to see, and it looks identical to a setting that does not
+  work.
+
+  ACM's surfaces now follow **ACM's** number, and the source's is still reported beside it
+  (`sourceWarnPerHour`) rather than quietly dropped. The plugin's own threshold continues to govern
+  the plugin's own panel: they are two applications with two knobs, which is what the code now says
+  as well as does.
+
 ## [0.16.6] — 2026-10-15
 
 ### Added

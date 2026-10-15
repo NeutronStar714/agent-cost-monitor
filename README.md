@@ -148,7 +148,9 @@ the window's dashed line and the burn-rate dot, **and the tray's figure, which t
 amber once the live burn rate passes it**. Set it with `acm warn 8` (and read it back with plain
 `acm warn`), or by editing the same key in the config file — the daemon notices the file changing
 and applies it on the next poll, so nothing needs restarting. `ACM_WARN_PER_HOUR`, if set, wins for
-whichever process is started with it. The window puts itself back on top and repairs a
+whichever process is started with it. The DSH plugin is a separate thing with a separate knob: its
+own warning threshold governs its own panel, and the figures ACM draws follow ACM's number wherever
+they come from — so setting the limit here always changes what you see here. The window puts itself back on top and repairs a
 window that was hidden or minimised — but never moves one you have positioned yourself, whichever
 flags the launch was given. Reuse is the default: an existing window is left exactly where it is,
 and only `acm launch --new` opens a second one.
