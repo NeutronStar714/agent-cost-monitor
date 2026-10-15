@@ -143,7 +143,11 @@ prompt entry for Claude Code — and only fall back to usage samples when it rec
 | `burnWindowMs` | `15000` | The window `β(t)` is measured over | `ACM_BURN_WINDOW_MS` |
 | `pollMs` | `1000` | How often the window asks for figures | `ACM_POLL_MS` |
 
-`SPEND_WATCH_CURRENCY=USD` prices in dollars. The window puts itself back on top and repairs a
+`SPEND_WATCH_CURRENCY=USD` prices in dollars. `warnPerHour` is one number shared by every surface:
+the window's dashed line and the burn-rate dot, **and the tray's figure, which turns from white to
+amber once the live burn rate passes it**. It is read when the daemon starts, so a change to the
+file needs the daemon restarted (the tray starts a new one within five seconds of the old one
+stopping); `ACM_WARN_PER_HOUR`, if set, wins for whichever process is started with it. The window puts itself back on top and repairs a
 window that was hidden or minimised — but never moves one you have positioned yourself, whichever
 flags the launch was given. Reuse is the default: an existing window is left exactly where it is,
 and only `acm launch --new` opens a second one.

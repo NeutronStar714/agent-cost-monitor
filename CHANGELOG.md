@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file, together with t
 [README](README.md). The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.5] — 2026-10-15
+
+### Changed
+
+- **The README now says what `warnPerHour` actually controls.** It was described only in terms of
+  the window — a dashed line and a dot — but it is one number shared by every surface, and it is
+  what turns the **tray's figure from white to amber** once the live burn rate passes it. The row
+  also gained the two things a reader needs: the value is read when the daemon **starts**, so a
+  change to the file needs the daemon restarted (the tray starts a fresh one within five seconds of
+  the old one stopping), and `ACM_WARN_PER_HOUR` overrides it for whichever process is started with
+  it.
+
+### Notes
+
+- The amber behaviour itself needed no change — asked for as an update, it already existed — so this
+  entry records the answering of the question rather than a fix. Confirmed against the running
+  daemon instead of the source alone: it reports `liveBurn = 4.99` and `warnPerHour = 15`, which is
+  why the figure is white at that moment, and the comparison in `window/tray.ps1` is
+  `liveBurn > warnPerHour` → fill `#FFB020`.
+
 ## [0.16.4] — 2026-10-15
 
 ### Fixed
