@@ -4,6 +4,35 @@ All notable changes to this project are documented in this file, together with t
 [README](README.md). The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.3] — 2026-10-15
+
+### Fixed
+
+- **The scheduled task could name a PowerShell the Task Scheduler cannot find.** The action stored
+  a bare `pwsh`, resolved against the deciding shell's `PATH` — which on this machine includes a
+  private bundle, and in the service's context does not exist. The task then ran *nothing* and
+  logged *nothing*, which is indistinguishable from a tray that dies instantly: the third variant
+  of the same symptom in one afternoon. `acm tray` now stores an **absolute** path, resolved with
+  `where.exe`, falling back to Windows PowerShell's fixed location.
+
+- **The task's action moved into a `.vbs` wrapper.** `schtasks` stores an action in a fixed-size
+  buffer and refuses a long command line with `0x80004005` (E_FAIL) — so the version that named an
+  absolute PowerShell could not be created at all, while the version short enough to be accepted was
+  the one naming a `pwsh` the service cannot resolve. The task now points at one short path
+  (`wscript.exe "<cache>\tray-launch.vbs"`) and the wrapper runs the real command hidden, which also
+  keeps a console from flashing at startup.
+
+### Notes
+
+- Three distinct ways for this to fail silently, all found in one afternoon, which is why the tray
+  took several rounds: a direct child is **killed with its launcher** (a job object with
+  kill-on-close), a task naming a bare `pwsh` **never starts** (the service's `PATH` is not the
+  shell's), and a task with a full command line **cannot be created** (E_FAIL, buffer size). Each one
+  presented identically — an icon that flashes or never appears, and a log with nothing in it.
+- The tray's own log now records where it gets to (`starting: powershell <version>, apartment
+  <STA|MTA>, pid <n>`, then the icon decision), so a failure from here on names its own cause
+  instead of leaving an empty file.
+
 ## [0.16.2] — 2026-10-15
 
 ### Fixed

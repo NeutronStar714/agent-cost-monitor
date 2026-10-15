@@ -556,15 +556,31 @@ function startupFolder() {
  * is saved with a BOM. A machine with neither gets told so.
  */
 function powershellExe() {
-  for (const exe of ["pwsh", "powershell"]) {
+  // An ABSOLUTE path, not a bare name, because this value goes into a scheduled task's action and
+  // the Task Scheduler's PATH is not the shell's. Measured: `pwsh` resolved here — the DSH bundle
+  // is on this shell's PATH — and did not resolve there, so the task ran nothing at all and logged
+  // nothing, which looked exactly like a tray that dies instantly. `where.exe` is how a name
+  // becomes a path without a registry lookup, and Windows PowerShell has a stable absolute path as
+  // the last resort.
+  const fallback = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  for (const name of ["pwsh", "powershell"]) {
     try {
-      const probe = spawnSync(exe, ["-NoProfile", "-Command", "exit 0"], { stdio: "ignore", timeout: 20_000 });
-      if (probe.status === 0) return exe;
+      execFileSync(name, ["-NoProfile", "-Command", "exit 0"], { stdio: "ignore", timeout: 20_000 });
     } catch {
-      /* not installed, or not on PATH */
+      continue; // not installed, or not on PATH
     }
+    try {
+      const found = String(execFileSync("where.exe", [name], { encoding: "utf8", timeout: 10_000 }))
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)[0];
+      if (found !== undefined && existsSync(found)) return found;
+    } catch {
+      /* where.exe missing: the bare name is still worth trying */
+    }
+    return name;
   }
-  return "";
+  return existsSync(fallback) ? fallback : "";
 }
 
 /**
@@ -632,7 +648,46 @@ function trayStart() {
   // passing to it: the tray reads its own port from the config file, and the node that started this
   // command travels in the task's own action.
   const taskName = "agent-cost-monitor-tray";
-  const action = `"${exe}" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "${TRAY_SCRIPT}" -Port ${port} -Node "${process.execPath}"`;
+  // A wrapper, because schtasks stores a task's action in a fixed-size buffer and refuses a long
+  // command line outright — measured: with the full command (absolute PowerShell plus the script and
+  // node) /create failed with 0x80004005 E_FAIL, and the version short enough to be accepted was the
+  // one naming a bare `pwsh` that the service could not resolve. Either way the task ran nothing.
+  // A .vbs is the standard middle: the task points at one short path, and wscript runs the real
+  // command hidden, so no console flashes at start either.
+  //
+  // Assembled by concatenation rather than with templates, and paths are quoted only when they need
+  // it, with an inner quote doubled — which is VBScript's own escape.
+  const vbsQuote = (value) => {
+    const text = String(value);
+    return /[\s"]/.test(text) ? '"' + text.split('"').join('""') + '"' : text;
+  };
+  const command =
+    vbsQuote(exe) +
+    " -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File " +
+    vbsQuote(TRAY_SCRIPT) +
+    " -Port " +
+    port +
+    " -Node " +
+    vbsQuote(process.execPath);
+  const wrapper = join(CACHE_DIR, "tray-launch.vbs");
+  try {
+    mkdirSync(CACHE_DIR, { recursive: true });
+    writeFileSync(
+      wrapper,
+      [
+        "' acm tray launcher - written by `acm tray`.",
+        "' It exists because a scheduled task cannot hold a command line this long, and because a",
+        "' hidden wscript window is quieter at startup than a console would be.",
+        'Set sh = CreateObject("WScript.Shell")',
+        'sh.Run "' + command + '", 0, False',
+        "",
+      ].join("\r\n"),
+    );
+  } catch (error) {
+    say("  could not write the tray launcher (" + wrapper + "): " + error.message);
+    return 1;
+  }
+  const action = 'wscript.exe "' + wrapper + '"';
   // Arguments go to schtasks as an array, with no shell and no re-quoting. The first version joined
   // them into one string and wrapped each in quotes, which double-quoted the task's own action:
   // schtasks stored a mangled command line, PowerShell never started, and the tray died before
