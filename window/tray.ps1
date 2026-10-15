@@ -49,17 +49,27 @@ $pidFile = Join-Path $cache "tray.pid"
 $iconFile = Join-Path $PSScriptRoot "mark.ico"
 $launcher = Join-Path (Split-Path -Parent $PSScriptRoot) "window\launch.mjs"
 
-# A named mutex, not a lock file: it is released by the operating system if this process is
-# killed, so a crashed tray cannot leave the next one locked out of ever starting again.
-$mutex = [System.Threading.Mutex]::new($false, "Local\agent-cost-monitor-tray")
-if (-not $mutex.WaitOne(0, $false)) { exit 0 }
-
 function Write-Log([string]$line) {
   try {
     if (-not (Test-Path $cache)) { New-Item -ItemType Directory -Force -Path $cache | Out-Null }
     if ((Test-Path $logFile) -and ((Get-Item $logFile).Length -gt 262144)) { Set-Content -Path $logFile -Value "" }
     Add-Content -Encoding UTF8 -Path $logFile -Value ((Get-Date).ToUniversalTime().ToString("s") + "Z  tray  " + $line)
   } catch { }
+}
+
+# Logged before anything else can fail, and with the apartment state, because a process that dies
+# during startup cannot report its own death afterwards. Every previous attempt left a log beginning
+# at "started", which says nothing about how far the script actually got — so the first statement
+# after the log exists is one that records the conditions it is starting under.
+Write-Log ("starting: powershell " + $PSVersionTable.PSVersion.ToString() + ", apartment " + [System.Threading.Thread]::CurrentThread.GetApartmentState() + ", pid " + $PID)
+
+# A named mutex, not a lock file: the operating system releases it if this process is killed, so a
+# crashed tray cannot lock out the next one. The refusal is logged rather than silent, because
+# "another tray is already running" and "the tray died on startup" looked identical from outside.
+$mutex = [System.Threading.Mutex]::new($false, "Local\agent-cost-monitor-tray")
+if (-not $mutex.WaitOne(0, $false)) {
+  Write-Log "another tray already holds the mutex; leaving this one to it"
+  exit 0
 }
 
 # ---------------------------------------------------------------- formatting ---
@@ -325,6 +335,12 @@ function Host-Line([string]$key, $data) {
 
 function Refresh-Tray {
   try {
+    # The pid file is the only thing `acm tray --status` reads, and it can be lost while the tray
+    # keeps running: delete it and the CLI reports "not running", the next `acm tray` starts a second
+    # instance, and the mutex refuses it in silence — which is exactly how a working tray came to
+    # look dead. Rewriting it every tick makes the file self-healing rather than a single point of
+    # failure for the whole feature.
+    Set-Content -Path $pidFile -Value $PID -Encoding Ascii
     $menu.Items.Clear()
     $active = Get-Data ""
     $hosts = @{}

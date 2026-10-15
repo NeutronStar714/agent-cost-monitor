@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file, together with t
 [README](README.md). The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.2] — 2026-10-15
+
+### Fixed
+
+- **A running tray could become invisible to `acm tray`, and then to itself.** The pid file is the
+  only thing `--status` reads, and it can be deleted or lost while the tray keeps running: the CLI
+  then reports "not running", the next `acm tray` starts a second instance, and the **named mutex**
+  refuses that second instance — silently, exiting 0 before its own first log line existed. So a
+  perfectly healthy tray, started through the Task Scheduler (which is what makes it survive),
+  looked like a feature that does not work. The tray now rewrites its pid file on every refresh, so
+  the file is self-healing instead of a single point of failure.
+
+- **The tray logs where it gets to.** The first statement after the log function exists now records
+  the PowerShell version, the apartment state and the pid, and a mutex refusal is logged rather than
+  silent — because "a tray is already running" and "the tray died on startup" were
+  indistinguishable from the outside, which is what made the previous two rounds of this take so
+  long. Verbatim confirmation that the scheduler hand-off itself works: a tray started that way was
+  found still alive in session 1, running `pwsh` on `tray.ps1`, minutes after the command that
+  started it had exited.
+
 ## [0.16.1] — 2026-10-15
 
 ### Fixed
