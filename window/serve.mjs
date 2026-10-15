@@ -35,7 +35,25 @@ const BURN_WINDOW_MS = CONFIG.burnWindowMs;
 const IDLE_IS_ENDED_MS = 30_000;
 const CACHE = process.env.SPEND_WATCH_CACHE ?? join(homedir(), ".cache", "spend-watch");
 const DSH_URL = process.env.ACM_DSH_URL ?? "http://127.0.0.1:19387/dsh-budget-watcher/balance";
-const WARN = CONFIG.warnPerHour;
+// Re-read rather than fixed at startup. A setting that needs the daemon restarted to take effect is
+// indistinguishable from one that does not work, and the honest answer to "how do I change the warn
+// limit" had to include that restart. A stat per request costs nothing next to answering one, and
+// the file is only parsed when its modification time has actually moved.
+const CONFIG_FILE = join(homedir(), ".agent-cost-monitor.json");
+let WARN = CONFIG.warnPerHour;
+let WARN_SEEN_MTIME = 0;
+
+function refreshWarnLimit() {
+  try {
+    const mtime = statSync(CONFIG_FILE).mtimeMs;
+    if (mtime === WARN_SEEN_MTIME) return;
+    WARN_SEEN_MTIME = mtime;
+    const next = Number(resolveConfig(homedir()).warnPerHour);
+    if (Number.isFinite(next)) WARN = next;
+  } catch {
+    /* no config file is not a reason to forget the value already in hand */
+  }
+}
 
 const LOG_DIR = join(homedir(), ".cache", "agent-cost-monitor");
 const LOG_FILE = join(LOG_DIR, "window.log");
@@ -378,6 +396,10 @@ async function resolveData(prefer, now, lookup) {
 
 createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
+  // One refresh per request, before any route reads WARN: `acm warn 8` then takes effect on the next
+  // poll instead of at the next daemon restart, and the window's dashed line and the tray's figure
+  // both follow it.
+  refreshWarnLimit();
   if (url.pathname === "/health") {
     return json(res, { ok: true, port: PORT, windowPolledAt: lastWindowPollAt });
   }

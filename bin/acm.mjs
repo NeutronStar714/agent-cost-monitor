@@ -843,6 +843,7 @@ function main() {
     say("    [--host claude|codex|all]  (default: both, when their config exists)");
     say("  acm doctor                 check the pieces the status line needs\n");
     say("  acm pricing [--refresh]    the offline rate card: what it holds, when it changed\n");
+    say("  acm warn [rate]            show or set the burn rate the figures turn amber at\n");
     say("  --dry-run                  print the plan, change nothing");
     say("  --force                    replace a status line configured by something else");
     return 0;
@@ -928,6 +929,41 @@ function main() {
       say("  restart the window for the new code to be drawn:  acm launch --new");
     }
     return status;
+  }
+
+  if (command === "warn") {
+    // One number, shared by every surface: the window's dashed line and its dot, and the tray's
+    // figure, which turns from white to amber past it. Editing the config file by hand was the only
+    // way before this, and the README had to add "restart the daemon" — neither is needed now.
+    const current = Number(resolveConfig(homedir()).warnPerHour);
+    const given = argv.find((a) => !a.startsWith("-") && a !== "warn");
+    if (given === undefined) {
+      say("  warnPerHour  " + current);
+      say("  units        per hour, in the currency the figures use");
+      say("  config       " + CONFIG_FILE);
+      say("  set it       acm warn 8");
+      return 0;
+    }
+    const next = Number(given);
+    if (!Number.isFinite(next) || next < 0) {
+      say("  '" + given + "' is not a rate per hour; try: acm warn 8");
+      return 1;
+    }
+    if (dryRun) {
+      say("  would set    warnPerHour " + current + " -> " + next);
+      return 0;
+    }
+    let settings = {};
+    try {
+      settings = JSON.parse(readFileSync(CONFIG_FILE, "utf8"));
+    } catch {
+      /* no file yet: this writes the first one */
+    }
+    settings.warnPerHour = next;
+    withBackup(CONFIG_FILE, () => writeFileSync(CONFIG_FILE, JSON.stringify(settings, null, 2) + "\n"));
+    say("  warnPerHour  " + current + " -> " + next);
+    say("  the daemon re-reads the file, so this applies on the next poll");
+    return 0;
   }
 
   if (command === "pricing") {

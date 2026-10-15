@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file, together with t
 [README](README.md). The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.6] — 2026-10-15
+
+### Added
+
+- **`acm warn [rate]`** — show the burn rate at which every surface turns amber, or set it. Setting
+  writes `warnPerHour` into the config file with the usual timestamped backup and leaves every other
+  key untouched; `acm warn nonsense` is refused rather than written, and `--dry-run` prints the
+  change without making it.
+
+- **The daemon re-reads the config**, so a change applies on the next poll instead of at the next
+  daemon restart. One `stat` per request, and the file is parsed only when its modification time has
+  actually moved. This is the difference between a setting and a setting that appears not to work:
+  the honest answer to "how do I change the warn limit" previously had to end with "restart the
+  daemon".
+
+### Notes
+
+- Both follow-ups came from one question, which is a fair sign they were the right two — the README's
+  own instructions were the evidence that the manual path was too long.
+- A **running** daemon needs one restart to load the re-read, since the code that re-reads is itself
+  new; after that, changes are live. Verified on this machine by restarting the daemon, setting the
+  value through the new command, and reading it back from `/data` without another restart.
+
 ## [0.16.5] — 2026-10-15
 
 ### Changed
