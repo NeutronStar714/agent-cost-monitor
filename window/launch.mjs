@@ -13,7 +13,7 @@
 // guide — and every value is overridable by environment variable.
 
 import { spawn, spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,6 +23,26 @@ import { resolveConfig } from "../src/autostart.mjs";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
 const CONFIG = resolveConfig(homedir());
+
+/**
+ * The needle that identifies our window.
+ *
+ * Read from the page rather than repeated here. An app window wears its page's `<title>`, and
+ * this string is the one thing that has to agree between the two files: a title changed in the
+ * page and not here is a launcher that never finds the window it already opened, so every prompt
+ * would open another one. A page with no title (or none it can read) falls back to the name this
+ * file used to hardcode, which is also what the Tauri widget is titled in src-tauri/src/main.rs.
+ */
+const WINDOW_TITLE = (() => {
+  try {
+    const match = /<title>([^<]*)<\/title>/i.exec(readFileSync(join(HERE, "index.html"), "utf8"));
+    const title = (match?.[1] ?? "").trim();
+    return title === "" ? "ACM" : title;
+  } catch {
+    return "ACM";
+  }
+})();
+
 const PORT = CONFIG.port;
 const HOST = valueOf("--host");
 const useTauri = process.argv.includes("--tauri") || CONFIG.backend === "tauri";
@@ -152,7 +172,7 @@ public class AcmWin {
   // blocking every future prompt as "already open".
   //
   // The title must match EXACTLY, not merely contain the name. A normal browser window or tab
-  // showing our page is titled "agent-cost-monitor - Profile 1 - Microsoft Edge", and a
+  // showing our page is titled "ACM - Profile 1 - Microsoft Edge", and a
   // substring match found that large window first, decided a window was already open, and left
   // the real one unopened — a launch that silently did nothing. Our app window and the widget
   // are both titled exactly this.
@@ -181,7 +201,7 @@ $deadline = (Get-Date).AddMilliseconds(${timeoutMs})
 $handle = [IntPtr]::Zero
 # 40ms, not 150: this is the loop whose latency is the wrongly sized window on screen.
 while ((Get-Date) -lt $deadline -and $handle -eq [IntPtr]::Zero) {
-  $handle = [AcmWin]::Find("agent-cost-monitor")
+  $handle = [AcmWin]::Find("${WINDOW_TITLE}")
   if ($handle -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 40 }
 }
 if ($handle -eq [IntPtr]::Zero) { Write-Output "NONE"; exit 0 }
@@ -203,7 +223,7 @@ if ($onTop) {
   $delays = if ($shouldPlace) { @(300, 900, 1800, 4200) } else { @(500, 1200) }
   foreach ($delay in $delays) {
     Start-Sleep -Milliseconds $delay
-    $fresh = [AcmWin]::Find("agent-cost-monitor")
+    $fresh = [AcmWin]::Find("${WINDOW_TITLE}")
     if ($fresh -ne [IntPtr]::Zero) { $handle = $fresh }
     [void][AcmWin]::SetWindowPos($handle, $after, ${CONFIG.x}, ${CONFIG.y}, ${CONFIG.width}, ${CONFIG.height}, $move)
   }

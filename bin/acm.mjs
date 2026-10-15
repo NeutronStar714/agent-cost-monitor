@@ -10,7 +10,7 @@
 // until the plan for that host is known.
 
 import { spawn, spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,6 +50,10 @@ const CODEX_CONFIG = join(homedir(), ".codex", "config.toml");
 const DSH_PROFILE = process.env.ACM_DSH_PROFILE ?? "dsh-tui";
 const PLUGIN_REPO = process.env.ACM_PLUGIN_REPO ?? "https://github.com/NeutronStar714/dsh-budget-watcher";
 const LAUNCH_SCRIPT = join(PACKAGE_ROOT, "window", "launch.mjs");
+const TRAY_SCRIPT = join(PACKAGE_ROOT, "window", "tray.ps1");
+const TRAY_PID = join(CACHE_DIR, "tray.pid");
+const TRAY_LOG = join(CACHE_DIR, "tray.log");
+const TRAY_STARTUP = join(startupFolder(), "ACM Tray.vbs");
 const CONFIG_FILE = configPath(homedir());
 const LOG_FILE = join(homedir(), ".cache", "agent-cost-monitor", "window.log");
 const WINDOW_URL = `http://127.0.0.1:${process.env.ACM_WINDOW_PORT ?? 7420}/`;
@@ -479,6 +483,10 @@ function removeEverything({ self, keepCache }) {
   const commandFile = claudeCommandPath(homedir());
   failures += removePath(commandFile, "file");
 
+  say("\ntray");
+  failures += removePath(TRAY_STARTUP, "file");
+  failures += trayStop();
+
   say("\nconfig");
   failures += removePath(CONFIG_FILE, "file");
 
@@ -526,6 +534,213 @@ function removePath(path, kind) {
   }
 }
 
+// -------------------------------------------------------------------- tray ---
+
+/**
+ * Where Windows keeps the per-user Startup folder.
+ *
+ * Asked of the environment rather than assumed to be C:\Users\..., because the login entry only
+ * does anything at all if it lands in the folder Windows actually reads.
+ */
+function startupFolder() {
+  const roaming = process.env.APPDATA ?? join(homedir(), "AppData", "Roaming");
+  return join(roaming, "Microsoft", "Windows", "Start Menu", "Programs", "Startup");
+}
+
+/**
+ * Which PowerShell to hand the tray to: 7 if it answers, else Windows PowerShell.
+ *
+ * Neither is required, so this asks instead of assuming: `pwsh` is preferred because it reads a
+ * UTF-8 script without a byte-order mark and starts in an STA apartment, which is what a WinForms
+ * notification icon wants; Windows PowerShell is the fallback, and works because window/tray.ps1
+ * is saved with a BOM. A machine with neither gets told so.
+ */
+function powershellExe() {
+  for (const exe of ["pwsh", "powershell"]) {
+    try {
+      const probe = spawnSync(exe, ["-NoProfile", "-Command", "exit 0"], { stdio: "ignore", timeout: 20_000 });
+      if (probe.status === 0) return exe;
+    } catch {
+      /* not installed, or not on PATH */
+    }
+  }
+  return "";
+}
+
+/**
+ * The tray's own pid, or undefined when nothing is behind it any more.
+ *
+ * The pid file can outlive its process — a kill, a logoff, a crash — and a stale pid that looks
+ * like a running tray would make `acm tray` refuse to start the one the user is asking for, so
+ * the process itself is asked whether it exists before the file is believed.
+ */
+function trayPid() {
+  let pid;
+  try {
+    pid = Number(readFileSync(TRAY_PID, "utf8").trim());
+  } catch {
+    return undefined;
+  }
+  if (!Number.isInteger(pid) || pid <= 0) return undefined;
+  try {
+    process.kill(pid, 0);
+    return pid;
+  } catch (error) {
+    // EPERM is "it exists, and not as this user" — alive is all the question asks.
+    return error?.code === "EPERM" ? pid : undefined;
+  }
+}
+
+/** A synchronous sleep, because the CLI's own flow is synchronous. */
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function trayStart() {
+  if (!existsSync(TRAY_SCRIPT)) {
+    say(`  the tray is not in this install (${TRAY_SCRIPT} is missing)`);
+    return 1;
+  }
+  const running = trayPid();
+  if (running !== undefined) {
+    say(`  already running (pid ${running})`);
+    return 0;
+  }
+  const exe = dryRun ? "powershell" : powershellExe();
+  if (exe === "") {
+    say("  no PowerShell found (tried pwsh and powershell)");
+    return 1;
+  }
+  const port = String(resolveConfig(homedir()).port);
+  if (dryRun) {
+    say(`  would start: ${exe} -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ${TRAY_SCRIPT} -Port ${port}`);
+    return 0;
+  }
+  // Detached, so a GUI helper never holds this command open — and its stderr goes to the tray's
+  // own log rather than to nowhere. A script that dies while being parsed never reaches its own
+  // Write-Log, so without this the entire symptom of a broken install is "it did not come up",
+  // with an empty log to explain it.
+  let errFd;
+  try {
+    mkdirSync(CACHE_DIR, { recursive: true });
+    errFd = openSync(TRAY_LOG, "a");
+  } catch {
+    /* a tray with nowhere to log is still a tray */
+  }
+  // NOT `detached: true`, which is what a GUI helper normally wants — and which here means the
+  // tray silently does nothing at all. On Windows `detached` means DETACHED_PROCESS: a console
+  // with no window AND no console at all, and PowerShell started that way exits 0 before running
+  // a single line of the script (measured: with `detached` the pid file is never written and
+  // stderr is empty; without it, everything runs). `windowsHide` plus `unref` is what this wants
+  // anyway: CREATE_NO_WINDOW gives the tray its own hidden console, so it is not attached to the
+  // console that ran `acm` and survives that console closing, and on Windows a child outlives its
+  // parent regardless — which is why the launcher next door relies on the same property.
+  const child = spawn(exe, ["-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", TRAY_SCRIPT, "-Port", port, "-Node", process.execPath], {
+    stdio: ["ignore", "ignore", errFd ?? "ignore"],
+    windowsHide: true,
+  });
+  child.unref();
+  // The child holds its own descriptor from here on; closing the parent's copy is what stops this
+  // command from holding the log open.
+  if (errFd !== undefined) {
+    try {
+      closeSync(errFd);
+    } catch {
+      /* already closed */
+    }
+  }
+
+  // Then wait for the pid rather than assuming: a detached process says nothing, so a tray that
+  // died on its first line — old PowerShell, no WinForms, a bad flag — would otherwise look
+  // exactly like one that is up. The log is where it explains itself, so the log is what gets read.
+  // Six seconds, not two: PowerShell has to start and `Add-Type` compiles the one P/Invoke stub
+  // the icon needs, which measured out at over three seconds on this machine — long enough that a
+  // two-second cap called a working tray broken. Success returns as soon as the pid appears, so
+  // only the failing case ever waits this long.
+  for (let i = 0; i < 24 && trayPid() === undefined; i += 1) sleepSync(250);
+  const pid = trayPid();
+  if (pid === undefined) {
+    say(`  the tray did not come up (${exe}); it said:`);
+    const tail = existsSync(TRAY_LOG) ? readFileSync(TRAY_LOG, "utf8").split("\n").filter(Boolean).slice(-6) : [];
+    if (tail.length === 0) say(`  (nothing in ${TRAY_LOG})`);
+    else for (const line of tail) say(`  ${line}`);
+    return 1;
+  }
+  say(`  tray        running (pid ${pid}, ${exe}, port ${port})`);
+  say(`  log         ${TRAY_LOG}`);
+  // Windows hides a new notification icon by default. Saying so once is cheaper than the user
+  // deciding the feature does not work.
+  say("  Windows hides a new notification icon: click the ^ overflow and drag it onto the taskbar");
+  return 0;
+}
+
+function trayStop() {
+  const pid = trayPid();
+  if (pid === undefined) {
+    try {
+      unlinkSync(TRAY_PID);
+    } catch {
+      /* nothing to clean */
+    }
+    say("  tray        not running");
+    return 0;
+  }
+  if (dryRun) {
+    say(`  would stop  pid ${pid}`);
+    return 0;
+  }
+  try {
+    process.kill(pid);
+  } catch (error) {
+    say(`  could not stop pid ${pid}: ${error.message}`);
+    return 1;
+  }
+  say(`  stopped     pid ${pid}`);
+  return 0;
+}
+
+function trayStatus() {
+  const pid = trayPid();
+  say(`  tray        ${pid === undefined ? "not running" : `running (pid ${pid})`}`);
+  say(`  script      ${existsSync(TRAY_SCRIPT) ? TRAY_SCRIPT : `${TRAY_SCRIPT} (missing)`}`);
+  say(`  log         ${existsSync(TRAY_LOG) ? TRAY_LOG : `${TRAY_LOG} (nothing logged yet)`}`);
+  say(`  at login    ${existsSync(TRAY_STARTUP) ? TRAY_STARTUP : "not installed"}`);
+  say("  it reads the window's daemon, so it needs one running: `acm launch` starts it");
+  return 0;
+}
+
+/**
+ * Start it now and at every login.
+ *
+ * A .vbs rather than a shortcut, because `Run(..., 0, False)` is the one way to start a console
+ * program with no console at all — and a console window flashing at login is exactly what a tray
+ * icon must not do.
+ */
+function trayInstallStartup() {
+  const port = String(resolveConfig(homedir()).port);
+  const exe = powershellExe() || "powershell";
+  const body = [
+    "' acm tray — the spend figures in the notification area, started at login.",
+    "' Written by `acm tray --install`; remove it with `acm tray --uninstall`.",
+    'Set sh = CreateObject("WScript.Shell")',
+    `sh.Run "${exe} -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""${TRAY_SCRIPT}"" -Port ${port} -Node ""${process.execPath}""", 0, False`,
+    "",
+  ].join("\r\n");
+  if (dryRun) {
+    say(`  would write ${TRAY_STARTUP}`);
+    return 0;
+  }
+  try {
+    mkdirSync(dirname(TRAY_STARTUP), { recursive: true });
+    writeFileSync(TRAY_STARTUP, body);
+    say(`  at login    ${TRAY_STARTUP}`);
+    return 0;
+  } catch (error) {
+    say(`  could not write the login entry: ${error.message}`);
+    return 1;
+  }
+}
+
 // --------------------------------------------------------------------- main ---
 
 /**
@@ -546,6 +761,9 @@ function main() {
     say("  acm install [--host h]     configure a host (claude | dsh | all; default: claude)");
     say("  acm launch [--host h]      start the window now (--host codex points it at Codex)");
     say("                             reuses an open window; --new opens a second one");
+    say("  acm tray                   the same figures in the notification area (Windows)");
+    say("                             --install also starts it at every login");
+    say("                             --status | --stop | --uninstall");
     say("  acm status                 what is detected and configured");
     say("  acm uninstall              remove everything acm added to your machine");
     say("                             (--self also uninstalls the npm package)");
@@ -561,6 +779,16 @@ function main() {
   }
   if (command === "status") return status();
   if (command === "launch") return launch({ quiet: flag("quiet") });
+  if (command === "tray") {
+    if (flag("status")) return trayStatus();
+    if (flag("stop")) return trayStop();
+    if (flag("uninstall")) {
+      const removed = removePath(TRAY_STARTUP, "file");
+      return trayStop() + removed;
+    }
+    if (flag("install")) return trayInstallStartup() + trayStart();
+    return trayStart();
+  }
   if (command === "clean-profiles") {
     // Auto-launch is withdrawn, but machines that ran it still carry the block.
     say("old auto-launch block");
@@ -669,6 +897,7 @@ function main() {
     say(`  dsh             ${hasCommand("dsh") ? "present" : "missing"}`);
     const cfg = resolveConfig(homedir());
     say(`  window          ${cfg.width}x${cfg.height} at ${cfg.x},${cfg.y}  backend=${cfg.backend}  onTop=${cfg.alwaysOnTop}  port=${cfg.port}`);
+    say(`  tray            ${existsSync(TRAY_SCRIPT) ? "present" : "MISSING"}  ${trayPid() === undefined ? "not running" : `running (pid ${trayPid()})`}  ${TRAY_SCRIPT}`);
     say(`  config file     ${existsSync(CONFIG_FILE) ? CONFIG_FILE : `${CONFIG_FILE} (not written yet; defaults apply)`}`);
     say(`  log file        ${existsSync(LOG_FILE) ? LOG_FILE : `${LOG_FILE} (nothing logged yet)`}`);
     say(pricingCache());

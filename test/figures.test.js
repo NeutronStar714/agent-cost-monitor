@@ -145,3 +145,85 @@ test("a nonsense burn window falls back rather than producing Infinity", () => {
     assert.ok(Number.isFinite(f.liveBurn), `burnWindowMs=${String(bad)} produced ${f.liveBurn}`);
   }
 });
+
+// ------------------------------------------------- the last completed turn -----
+//
+// `turnCost` is the CURRENT turn and keeps moving while the agent works. The tray shows
+// "the last conversation that finished", which is a different turn whenever one is still
+// running — and labelling a figure that is still growing as finished is the one thing that
+// figure must never do.
+
+test("while a turn is running, the completed one is the turn before it", () => {
+  const f = figuresFrom([unit(1, T0), unit(2, T0 + 60_000)], options(T0 + 60_000, { live: true }));
+  assert.equal(f.completed.index, 1, "the running second turn is not the finished one");
+  assert.equal(f.completed.cost, 1, "and the figure is the first turn's own spend");
+  assert.equal(f.completed.endedAt, T0, "which stopped where that turn stopped");
+  assert.equal(f.completed.current, false, "so it is not the turn the host is on now");
+  assert.equal(f.turnCost, 1, "while the current turn is still reported as the current one");
+});
+
+test("once the current turn is over, it is itself the completed one", () => {
+  const f = figuresFrom([unit(1, T0), unit(2, T0 + 60_000)], options(T0 + 60_000 + IDLE_IS_ENDED_MS + 1));
+  assert.equal(f.completed.index, 2);
+  assert.equal(f.completed.cost, 1);
+  assert.equal(f.completed.current, true, "the host has not moved on to another turn");
+});
+
+test("a turn that has not finished and has nothing before it has no completed turn", () => {
+  // The first prompt of a session. Reporting the running turn here would show a half-finished
+  // number as a final one, which is worse than saying there is nothing yet.
+  const f = figuresFrom([unit(1, T0)], options(T0 + 1000, { live: true }));
+  assert.equal(f.completed, null);
+  assert.equal(f.turnCost, 1, "the running turn is still the current one");
+});
+
+test("a completed turn's duration is the host's own when the host reports one", () => {
+  // Codex writes started_at/completed_at; the samples alone span 18s where the host says 51.7s,
+  // because the first billed call lands well after the turn begins.
+  const units = [unit(1, T0 + 30_000), unit(1, T0 + 48_000)];
+  const told = figuresFrom(units, options(T0 + 51_700, { turnStartMs: T0, durationMs: 51_700, live: false }));
+  assert.equal(told.completed.durationMs, 51_700);
+  assert.equal(told.completed.basis, "host");
+  assert.equal(told.completed.startedAt, T0, "and the host's start, not the first sample's");
+});
+
+test("a turn with no host bounds is measured from its own samples, and says so", () => {
+  // The honest label for the hosts that record no turn bounds: this is the span between the
+  // first and last billed call, which is shorter than the turn itself.
+  const f = figuresFrom([unit(1, T0), unit(1, T0 + 5000), unit(2, T0 + 60_000)], options(T0 + 60_000, { live: true }));
+  assert.equal(f.completed.index, 1);
+  assert.equal(f.completed.basis, "samples");
+  assert.equal(f.completed.startedAt, T0);
+  assert.equal(f.completed.endedAt, T0 + 5000);
+  assert.equal(f.completed.durationMs, 5000);
+});
+
+test("the completed turn carries the tokens and models of its own calls", () => {
+  const tokens = (turn, time, input, output, model = "test-model") => ({
+    turn,
+    time,
+    model,
+    usage: { inputTokens: input, outputTokens: output, cacheReadTokens: 0, cacheWriteTokens: 0 },
+  });
+  const f = figuresFrom(
+    [tokens(1, T0, 1_000_000, 10), tokens(1, T0 + 1000, 500_000, 20), tokens(2, T0 + 60_000, 7, 7, "other-model")],
+    options(T0 + 60_000, { live: true }),
+  );
+  assert.equal(f.completed.tokens.input, 1_500_000);
+  assert.equal(f.completed.tokens.output, 30);
+  assert.deepEqual(f.completed.models, ["test-model"], "the running turn's model is not this turn's");
+});
+
+test("a completed turn is priced, not summed, when a model has no rate", () => {
+  // An unpriced model is unknown spend: it must not silently become a cheap completed turn.
+  const f = figuresFrom(
+    [
+      unit(1, T0),
+      { turn: 1, time: T0 + 1000, model: "mystery", usage: { inputTokens: 1e6, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 } },
+      unit(2, T0 + 60_000),
+    ],
+    options(T0 + 60_000, { live: true }),
+  );
+  assert.equal(f.completed.cost, 1, "only the priced call counts");
+  assert.equal(f.completed.tokens.input, 2_000_000, "and the unpriced call's tokens are still reported");
+});

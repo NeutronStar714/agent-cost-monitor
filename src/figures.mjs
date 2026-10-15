@@ -98,6 +98,58 @@ export function figuresFrom(units, { now, currency, lookup, burnWindowMs, awaiti
     window,
   );
 
+  // The last turn that has actually finished — what a label saying "the last conversation" has
+  // to mean, because `turnCost` above is the *current* turn and is still moving while the agent
+  // works. A figure that is still growing, under a label that calls it final, is the one thing
+  // this must not produce.
+  //
+  // The rule reads only what each host already reports, so there is no per-host branch: if the
+  // current turn is over then it is itself the completed one, and if it is running then the
+  // completed one is the turn before it. Before the first turn ends there is nothing to report
+  // and `null` says so.
+  const completedIndex = live
+    ? sorted.filter((u) => u.turn < lastTurn).reduce((max, u) => Math.max(max, u.turn), Number.NEGATIVE_INFINITY)
+    : sorted.length === 0
+      ? Number.NEGATIVE_INFINITY
+      : lastTurn;
+  let completed = null;
+  if (Number.isFinite(completedIndex)) {
+    const own = sorted.filter((u) => u.turn === completedIndex);
+    const tokens = { input: 0, cached: 0, output: 0 };
+    let cost = 0;
+    let firstAt = null;
+    let lastAt = null;
+    for (const u of own) {
+      cost += price(u)?.cost ?? 0;
+      if (firstAt === null || u.time < firstAt) firstAt = u.time;
+      if (lastAt === null || u.time > lastAt) lastAt = u.time;
+      tokens.input += Number(u.usage?.inputTokens) || 0;
+      tokens.cached += (Number(u.usage?.cacheReadTokens) || 0) + (Number(u.usage?.cacheWriteTokens) || 0);
+      tokens.output += Number(u.usage?.outputTokens) || 0;
+    }
+    const current = completedIndex === lastTurn;
+    // Only the current turn can carry host bounds: an earlier turn's start is no longer in the
+    // transcript, so its span is the distance between its own first and last billed call.
+    const hostStart = current ? epoch(turnStartMs) : undefined;
+    const hostDuration = current && Number.isFinite(durationMs) && durationMs >= 0 ? durationMs : undefined;
+    const startedAt = hostStart ?? firstAt ?? now;
+    const endedAt = hostDuration === undefined ? (lastAt ?? startedAt) : startedAt + hostDuration;
+    completed = {
+      index: completedIndex,
+      cost,
+      tokens,
+      models: [...new Set(own.map((u) => u.model).filter((m) => m !== ""))].slice(0, 4),
+      startedAt,
+      endedAt,
+      durationMs: Math.max(0, endedAt - startedAt),
+      // Where the duration comes from: the host's own measurement, or the span between the first
+      // and last billed call, which is shorter than the turn itself. A renderer that shows the
+      // number without this cannot tell the two apart.
+      basis: hostDuration === undefined ? "samples" : "host",
+      current,
+    };
+  }
+
   return {
     turnCost,
     sessionCost,
@@ -106,6 +158,7 @@ export function figuresFrom(units, { now, currency, lookup, burnWindowMs, awaiti
     elapsedMs,
     live,
     ended: !live,
+    completed,
     turns: lastTurn,
     models: [...new Set(sorted.map((u) => u.model).filter((m) => m !== ""))].slice(0, 4),
     // Relative to the turn's start, and deliberately without a trailing point: the page adds

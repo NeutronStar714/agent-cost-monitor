@@ -107,6 +107,9 @@ export function parseRollout(lines) {
   let turn = 0;
   let sawUsage = false;
   let usagePath = "";
+  // The record kind and the numbers of the call billed last, for the echo check below.
+  let lastBilledKind = "";
+  let lastBilledFingerprint = "";
   let turnFromTask = 0;
   let turnFromContext = 0;
   let sawTaskStarted = false;
@@ -165,17 +168,36 @@ export function parseRollout(lines) {
     const found = [];
     collectUsage(payload, "payload", found);
     for (const { path, value } of found) {
-      // `turn_token_usage` is a running total for the turn, so summing it would
-      // multiply the bill; only per-call reports become units.
-      if (/turn_token_usage|total_token_usage/i.test(path)) continue;
+      // Codex reports the same tokens at three levels under the same field names: the
+      // call, the turn and the whole thread. The two cumulative ones are running totals,
+      // so summing either multiplies the bill — and the thread total is the dangerous
+      // one, because for a long session it runs to hundreds of millions of tokens and
+      // would be added to every single call. Only per-call reports become units.
+      // (`total_token_usage` is the older writer's name for the thread total.)
+      if (/(?:turn|thread|total)_token_usage/i.test(path)) continue;
+
+      // And Codex writes one call twice: as `token_usage_record` and, a line or two on, as
+      // the older `token_count` echo carrying the same numbers under `last_token_usage`.
+      // Both are the same call, so billing both doubles the session. The echo is recognised
+      // by three things together — a different record kind from the call billed last, and
+      // input, cached and output counts that repeat it exactly. Two distinct calls of one
+      // rollout do not land on a different record kind with identical numbers, so nothing
+      // real is dropped; and because the test is symmetric in the two kinds, it does not
+      // matter which of the pair was written first.
+      const engineUsage = toEngineUsage(value);
+      const fingerprint = `${engineUsage.inputTokens}/${engineUsage.cacheReadTokens}/${engineUsage.outputTokens}`;
+      if (kind !== lastBilledKind && fingerprint === lastBilledFingerprint) continue;
+
       sawUsage = true;
       usagePath = path;
+      lastBilledKind = kind;
+      lastBilledFingerprint = fingerprint;
       units.push({
         turnTask: Math.max(1, turnFromTask),
         turnContext: Math.max(1, turnFromContext),
         time,
         model,
-        usage: toEngineUsage(value),
+        usage: engineUsage,
       });
     }
   }

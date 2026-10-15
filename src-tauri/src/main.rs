@@ -107,7 +107,9 @@ fn main() {
             // than in a Rust backtrace. This sentence is written to the launcher's log, which is
             // why it names the cause instead of describing the symptom.
             if let Err(error) = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(address))
-                .title("agent-cost-monitor")
+                // Must match the page's <title> in window/index.html: the launcher finds the
+                // window by its title, so a widget titled differently is one it never reuses.
+                .title("ACM")
                 // `.icon` returns a Result, so the chain has to unwrap it here.
                 .icon(icon)?
                 .data_directory(webview_data_dir())
