@@ -616,38 +616,42 @@ function trayStart() {
     say(`  would start: ${exe} -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ${TRAY_SCRIPT} -Port ${port}`);
     return 0;
   }
-  // Detached, so a GUI helper never holds this command open — and its stderr goes to the tray's
-  // own log rather than to nowhere. A script that dies while being parsed never reaches its own
-  // Write-Log, so without this the entire symptom of a broken install is "it did not come up",
-  // with an empty log to explain it.
-  let errFd;
-  try {
-    mkdirSync(CACHE_DIR, { recursive: true });
-    errFd = openSync(TRAY_LOG, "a");
-  } catch {
-    /* a tray with nowhere to log is still a tray */
-  }
-  // NOT `detached: true`, which is what a GUI helper normally wants — and which here means the
-  // tray silently does nothing at all. On Windows `detached` means DETACHED_PROCESS: a console
-  // with no window AND no console at all, and PowerShell started that way exits 0 before running
-  // a single line of the script (measured: with `detached` the pid file is never written and
-  // stderr is empty; without it, everything runs). `windowsHide` plus `unref` is what this wants
-  // anyway: CREATE_NO_WINDOW gives the tray its own hidden console, so it is not attached to the
-  // console that ran `acm` and survives that console closing, and on Windows a child outlives its
-  // parent regardless — which is why the launcher next door relies on the same property.
-  const child = spawn(exe, ["-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", TRAY_SCRIPT, "-Port", port, "-Node", process.execPath], {
-    stdio: ["ignore", "ignore", errFd ?? "ignore"],
-    windowsHide: true,
-  });
-  child.unref();
-  // The child holds its own descriptor from here on; closing the parent's copy is what stops this
-  // command from holding the log open.
-  if (errFd !== undefined) {
+  // The tray must not be a child of this process, and that is measured rather than assumed.
+  //
+  // It used to be spawned directly: hidden, unref'd, not detached (detached was tried first and
+  // made PowerShell exit before running a line — see the history in this file). It still died. A
+  // child spawned that way is killed when this command exits, because a job object with
+  // kill-on-close covers the whole tree — the same restriction that refuses the widget a window.
+  // The tray proved it by flashing: it built its notification icon, wrote its pid file, and was
+  // killed during its first refresh, so the icon showed for about a hundred milliseconds, the log
+  // never reached the line that records the decision, and the pid file was left behind pointing at
+  // a process that no longer existed.
+  //
+  // The Task Scheduler starts it outside that job, and `/it` puts it in the interactive session,
+  // which is what a notification icon requires and a service context cannot give. Nothing needs
+  // passing to it: the tray reads its own port from the config file, and the node that started this
+  // command travels in the task's own action.
+  const taskName = "agent-cost-monitor-tray";
+  const action = `"${exe}" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "${TRAY_SCRIPT}" -Port ${port} -Node "${process.execPath}"`;
+  // Arguments go to schtasks as an array, with no shell and no re-quoting. The first version joined
+  // them into one string and wrapped each in quotes, which double-quoted the task's own action:
+  // schtasks stored a mangled command line, PowerShell never started, and the tray died before
+  // writing a single log line — precisely the "nothing comes up and nothing says why" symptom this
+  // change exists to remove.
+  const schtasks = (args) => {
     try {
-      closeSync(errFd);
-    } catch {
-      /* already closed */
+      execFileSync("schtasks", args, { stdio: "ignore", windowsHide: true });
+      return 0;
+    } catch (error) {
+      return typeof error?.status === "number" ? error.status : -1;
     }
+  };
+  const created = schtasks(["/create", "/tn", taskName, "/tr", action, "/sc", "once", "/st", "00:00", "/it", "/f"]);
+  const started = created === 0 ? schtasks(["/run", "/tn", taskName]) : -1;
+  if (created !== 0 || started !== 0) {
+    say(`  could not hand the tray to the Task Scheduler (create=${created} run=${started})`);
+    say(`  try: schtasks /create /tn ${taskName} /tr ${action} /sc once /st 00:00 /it /f`);
+    return 1;
   }
 
   // Then wait for the pid rather than assuming: a detached process says nothing, so a tray that

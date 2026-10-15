@@ -14,7 +14,7 @@
   window's placement script instead of in the engine.
 
   One icon per session (a second `acm tray`, or a double-clicked Startup entry, leaves), and it
-  exits through its own 退出 item or `acm tray --stop`.
+  exits through its own Quit item or `acm tray --stop`.
 
   The icon is shown while there is an agent behind the figure — any host whose transcript or
   rollout has been written recently, or an acm window polling the daemon — and hides itself when
@@ -58,7 +58,7 @@ function Write-Log([string]$line) {
   try {
     if (-not (Test-Path $cache)) { New-Item -ItemType Directory -Force -Path $cache | Out-Null }
     if ((Test-Path $logFile) -and ((Get-Item $logFile).Length -gt 262144)) { Set-Content -Path $logFile -Value "" }
-    Add-Content -Path $logFile -Value ((Get-Date).ToUniversalTime().ToString("s") + "Z  tray  " + $line)
+    Add-Content -Encoding UTF8 -Path $logFile -Value ((Get-Date).ToUniversalTime().ToString("s") + "Z  tray  " + $line)
   } catch { }
 }
 
@@ -314,11 +314,11 @@ function Host-Line([string]$key, $data) {
   # The route named "claude" answers with the source "claude-code"; everything else answers as
   # itself.
   $expected = if ($key -eq "claude") { "claude-code" } else { $key }
-  if ([string]$data.source -ne $expected) { return ("{0,-7} 无数据" -f $key) }
+  if ([string]$data.source -ne $expected) { return ("{0,-7} no data" -f $key) }
   $symbol = if ($data.symbol) { [string]$data.symbol } else { "¥" }
-  $line = ("{0,-7} 会话 {1}" -f $key, (Money $data.sessionCost $symbol))
+  $line = ("{0,-7} session {1}" -f $key, (Money $data.sessionCost $symbol))
   if ($null -ne $data.completed) {
-    $line = $line + " · 上轮 " + (Money $data.completed.cost $symbol) + " " + (Clock $data.completed.durationMs)
+    $line = $line + " · last turn " + (Money $data.completed.cost $symbol) + " " + (Clock $data.completed.durationMs)
   }
   return $line
 }
@@ -373,10 +373,10 @@ function Refresh-Tray {
     $icon.Visible = $show
 
     if ($null -eq $active -or $active.state -ne "ok") {
-      $why = if ($null -eq $active) { "守护进程没有响应 (http://127.0.0.1:$Port)" } else { [string]$active.hint }
+      $why = if ($null -eq $active) { "the daemon is not answering (http://127.0.0.1:$Port)" } else { [string]$active.hint }
       Set-Figure "--" $false
-      $icon.Text = "acm · 没有数据"
-      Add-Info "acm · 没有数据"
+      $icon.Text = "acm · no data"
+      Add-Info "acm · no data"
       Add-Info $why
       # One attempt per outage, and only when nothing answers at all: a tray started at login has
       # no daemon to read, and retrying every five seconds would spawn one per tick if the port is
@@ -386,9 +386,9 @@ function Refresh-Tray {
         Start-Daemon
       }
       Add-Separator
-      Add-Action "打开窗口  (会顺带把守护进程起起来)" { Start-Window }
-      Add-Action "刷新" { Refresh-Tray }
-      Add-Action "退出（关掉这个图标）" { Stop-Tray }
+      Add-Action "Open window  (starts the daemon too)" { Start-Window }
+      Add-Action "Refresh" { Refresh-Tray }
+      Add-Action "Quit (removes this icon)" { Stop-Tray }
       return
     }
 
@@ -409,22 +409,22 @@ function Refresh-Tray {
 
     Add-Info ("acm · " + $source + " · " + $model)
     if ($null -eq $completed) {
-      Add-Info "上一个完成的 turn：—（本会话还没有已完成的 turn）"
+      Add-Info "Last completed turn: — (this session has not finished one yet)"
     } else {
       # The two bases are different measurements and the menu says which one it is showing: a
       # host that records its own turn bounds gives the turn's real length, and one that does not
       # gives the span between the first and last billed call, which is shorter.
-      $basis = if ($completed.basis -eq "host") { "" } else { "（按调用时间估算，比整轮短）" }
+      $basis = if ($completed.basis -eq "host") { "" } else { " (estimated from call times, shorter than the whole turn)" }
       $tokens = if ($null -eq $completed.tokens) {
         ""
       } else {
         " · in " + (Tokens $completed.tokens.input) + " / out " + (Tokens $completed.tokens.output)
       }
-      Add-Info ("上一个完成的 turn：" + (Money $completed.cost $symbol) + " · " + (Clock $completed.durationMs) + $tokens + $basis)
+      Add-Info ("Last completed turn: " + (Money $completed.cost $symbol) + " · " + (Clock $completed.durationMs) + $tokens + $basis)
     }
-    Add-Info ("本轮（图标上的数字）：" + (Money $active.turnCost $symbol) + $(if ($active.live) { "（进行中）" } else { "（已结束）" }))
-    Add-Info ("会话累计：" + (Money $active.sessionCost $symbol))
-    Add-Info ("实时燃烧：" + (Burn $burn $symbol) + " · 平均：" + (Burn $active.averageBurn $symbol))
+    Add-Info ("This turn (the figure on the icon): " + (Money $active.turnCost $symbol) + $(if ($active.live) { " (running)" } else { " (ended)" }))
+    Add-Info ("Session total: " + (Money $active.sessionCost $symbol))
+    Add-Info ("Live burn: " + (Burn $burn $symbol) + " · average: " + (Burn $active.averageBurn $symbol))
 
     Add-Separator
     foreach ($key in @("dsh", "codex", "claude")) { Add-Info (Host-Line $key $hosts[$key]) }
@@ -432,18 +432,18 @@ function Refresh-Tray {
     # Whether a window is open is answerable, so the item below stops being a mystery: it says
     # what it would find, not merely that it is possible. The hide rule is stated here too, because
     # an icon that vanishes on its own is otherwise indistinguishable from one that crashed.
-    Add-Info ("窗口：" + $(if ($windowOpen) { "开着（正在轮询）" } else { "未开" }))
-    Add-Info ("图标：本轮进行中，或 " + [int]($IdleHideMs / 60000) + " 分钟内有过写入时显示；窗口开着时始终显示")
-    Add-Action "打开窗口  (acm launch)" { Start-Window }
-    Add-Action "刷新" { Refresh-Tray }
-    Add-Action "退出（关掉这个图标）" { Stop-Tray }
+    Add-Info ("Window: " + $(if ($windowOpen) { "open (polling)" } else { "not open" }))
+    Add-Info ("Icon: shown while a turn is running, or for " + [int]($IdleHideMs / 60000) + " minutes after any write; always while a window is open")
+    Add-Action "Open window  (acm launch)" { Start-Window }
+    Add-Action "Refresh" { Refresh-Tray }
+    Add-Action "Quit (removes this icon)" { Stop-Tray }
 
     # The tooltip is capped at 63 characters by the shell and throws past it, so three figures
     # and the host they belong to is the whole budget. The first of the three is the one on the
     # icon, so hovering explains what the number is.
-    $tip = "acm" + $(if ($over) { " !超速" } else { "" }) + " · " + $source + " · 本轮 " + (Money $active.turnCost $symbol) +
-      " · 上轮 " + $(if ($null -eq $completed) { "-" } else { Money $completed.cost $symbol }) +
-      " · 会话 " + (Money $active.sessionCost $symbol)
+    $tip = "acm" + $(if ($over) { " !over" } else { "" }) + " · " + $source + " · this turn " + (Money $active.turnCost $symbol) +
+      " · last turn " + $(if ($null -eq $completed) { "-" } else { Money $completed.cost $symbol }) +
+      " · session " + (Money $active.sessionCost $symbol)
     if ($tip.Length -gt 60) { $tip = $tip.Substring(0, 60) }
     $icon.Text = $tip
     # Only when it changes, so `acm tray --status`-style inspection of the log answers "what is
@@ -455,7 +455,7 @@ function Refresh-Tray {
   } catch {
     # A tick that throws would leave the icon frozen with no way to see why.
     Write-Log ("refresh failed: " + $_.Exception.Message)
-    try { $icon.Text = "acm · 出错了（见 tray.log）" } catch { }
+    try { $icon.Text = "acm · error (see tray.log)" } catch { }
   }
 }
 

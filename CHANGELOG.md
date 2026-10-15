@@ -4,6 +4,41 @@ All notable changes to this project are documented in this file, together with t
 [README](README.md). The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.1] — 2026-10-15
+
+### Fixed
+
+- **The tray was killed the instant `acm` exited, which is why it only ever flashed.** Measured
+  with a throwaway probe rather than guessed: spawn PowerShell with exactly the options the tray was
+  spawned with — hidden, `unref`, not detached — from a node parent that then exits, and the child
+  is gone within seconds; the same probe from inside a PowerShell job is gone too. A **job object
+  with kill-on-close** covers the tree, the same restriction that refuses the widget a window. So
+  the tray built its notification icon, wrote its pid file, and was killed during its first refresh:
+  the icon appeared for about a hundred milliseconds, the log never reached the line that records
+  the decision, and the pid file was left behind pointing at a process that no longer existed —
+  which is why `acm tray --status` could report a tray that was already dead.
+
+  `acm tray` now hands the tray to the **Task Scheduler** (`/it`, so it runs in the interactive
+  session a notification icon requires), outside the caller's job.
+
+- **The hand-off was itself broken in its first version.** The arguments were joined into a string
+  and each one re-quoted, which double-quoted the task's own action: schtasks stored a mangled
+  command line, PowerShell never started, and the tray died before writing a single log line —
+  exactly the "nothing comes up and nothing says why" symptom the change was meant to remove.
+  Arguments now go to `schtasks` as an array, with no shell and no re-quoting.
+
+- **The tray log destroyed every non-ASCII character.** `Add-Content` used the console's default
+  encoding, so the currency symbol and any non-ASCII model name became `?` on the way in. It is
+  written as UTF-8 now.
+
+### Changed
+
+- **The tray's interface is English**, like the rest of the project: its menu items, tooltips, host
+  lines, and its no-data and error messages. One deliberate exception — verbatim quotes of what
+  Windows itself said, such as the SmartScreen refusal and the File Explorer window title found in a
+  window search, keep their original text and now carry an English gloss, because translating
+  evidence would falsify it.
+
 ## [0.16.0] — 2026-10-13
 
 Merged from a fork (PR #1, CaiJw147): the tray, and two pricing corrections. The entries below are
@@ -179,7 +214,7 @@ It arrived with no changelog entry and no version bump, which is why this one ex
   The log finally said it, once the launcher stopped discarding stderr:
 
   ```
-  tauri widget said: agent-cost-monitor: could not create the window: 拒绝访问。 (os error 5)
+  tauri widget said: agent-cost-monitor: could not create the window: 拒绝访问。 (access denied; os error 5)
   ```
 
   A process started by a hook inherits that process's restrictions, and Windows refuses a WebView2
@@ -227,7 +262,7 @@ It arrived with no changelog entry and no version bump, which is why this one ex
     event from the outside. Demonstrated on the failure path this shell can reproduce:
 
     ```
-    tauri widget said: agent-cost-monitor: could not create the window: 拒绝访问。 (os error 5)
+    tauri widget said: agent-cost-monitor: could not create the window: 拒绝访问。 (access denied; os error 5)
     tauri widget said: This needs an interactive desktop session with the WebView2 runtime.
     ```
 
@@ -557,7 +592,7 @@ It arrived with no changelog entry and no version bump, which is why this one ex
   machine:
 
   ```
-  vis=True  1132x713  pid=12940 (explorer)  title='agent-cost-monitor - 文件资源管理器'
+  vis=True  1132x713  pid=12940 (explorer)  title='agent-cost-monitor - 文件资源管理器'  (File Explorer)
   ```
 
   A **File Explorer window on the project folder** contains the project name in its title. The

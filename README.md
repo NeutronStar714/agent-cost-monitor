@@ -200,11 +200,13 @@ and only `acm launch --new` opens a second one.
     cache is a plain JSON file at `~/.cache/spend-watch/claude-pricing.json` and can be seeded by
     hand.
 
-16. **The tray is Windows-only, and its menu is in Chinese.** The notification-area icon is a
-    Windows shell object, so `acm tray` cannot exist elsewhere; it needs PowerShell 7 or Windows
-    PowerShell, and it asks the daemon for every figure rather than reading anything itself —
-    starting one when nothing answers. Its labels arrived in Chinese with the contribution while the
-    rest of the interface is English, which is a decision to make rather than a bug to fix.
+16. **The tray is Windows-only.** The notification-area icon is a Windows shell object, so
+    `acm tray` cannot exist elsewhere; it needs PowerShell 7 or Windows PowerShell, and it asks the
+    daemon for every figure rather than reading anything itself — starting one when nothing answers.
+    It is started through the **Task Scheduler**, because a process spawned directly by `acm` is
+    killed the moment that command exits (a job object with kill-on-close covers the tree), which is
+    what made the icon flash and vanish. In the taskbar's own settings it is listed as **Windows
+    PowerShell**, because the icon belongs to the process that owns it, not to this project.
 17. **The tray shows the last turn that *finished*,** never the one still running, and marks a
     figure as the shorter call-span estimate when the host does not record its own turn bounds. A
     total that is still climbing, under a label that calls it final, is the one thing it must not

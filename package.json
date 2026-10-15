@@ -1,6 +1,6 @@
 {
   "name": "agent-cost-monitor",
-  "version": "0.16.0",
+  "version": "0.16.1",
   "description": "Live cost and burn-rate tracking for AI coding agents: a Claude Code status line, and a floating window for Codex and DSH that have no status row of their own.",
   "type": "module",
   "bin": {
