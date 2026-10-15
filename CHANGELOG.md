@@ -4,6 +4,35 @@ All notable changes to this project are documented in this file, together with t
 [README](README.md). The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.8] — 2026-10-15
+
+### Fixed
+
+- **The tray figure was drawn at half the size the shell asked for, and then upscaled.** Measured on
+  this machine, which is at 200% scaling: a DPI-unaware process reports `SmallIconSize` as **16x16**
+  and `GetDpiForSystem()` as **96**, while the same machine after declaring per-monitor-v2 awareness
+  reports **32x32** and **192**. `window/tray.ps1` draws at `SmallIconSize`, so it has been rendering
+  a 16-pixel figure into a 32-pixel slot — soft, and with three glyphs squeezed into about five
+  pixels each, which is exactly the "ugly and blurred" that was reported.
+
+  It now declares per-monitor-v2 awareness before anything asks the shell how big a tray icon is,
+  with a deliberate ladder (per-monitor-v2, then the 8.1 API, then the Vista-era one), and logs which
+  rung succeeded — so a figure that is still soft is a question about which of these ran rather than
+  another guess. The margin and the outline stroke now follow the box as well; they were constants,
+  which was invisible while the box was 16 and wrong the moment it became 32.
+
+### Notes
+
+- The comment in that file measured `SmallIconSize` at 100% scaling, concluded "sixteen pixels", and
+  was right there and wrong here — the same DPI trap that invalidated several of this project's
+  earlier screenshots and icon-size conclusions.
+
+- **Writing text into the taskbar itself, beside the clock and the battery percentage, is not
+  available to a third-party application.** Those are shell-owned components, and the Deskband API
+  that once allowed it was removed in Windows 11. The supported slot is the notification-area icon,
+  which is what this change makes legible. Anything else would mean injecting into `explorer.exe` or
+  floating a window over the taskbar, with the fragility either implies.
+
 ## [0.16.7] — 2026-10-15
 
 ### Fixed

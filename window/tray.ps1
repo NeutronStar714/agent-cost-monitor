@@ -63,6 +63,35 @@ function Write-Log([string]$line) {
 # after the log exists is one that records the conditions it is starting under.
 Write-Log ("starting: powershell " + $PSVersionTable.PSVersion.ToString() + ", apartment " + [System.Threading.Thread]::CurrentThread.GetApartmentState() + ", pid " + $PID)
 
+# Per-monitor DPI awareness, declared before anything asks the shell how big a tray icon is.
+#
+# Without it this process is DPI-unaware, so SystemInformation.SmallIconSize answers 16x16 on a
+# 200%-scaled display — the LOGICAL size — while the shell draws that slot at 32 physical pixels. A
+# figure drawn at 16 and shown at 32 is upscaled, which is what "ugly and blurred" was: soft, and
+# with three glyphs squeezed into about five pixels each. Measured here: unaware 16x16 and dpi 96;
+# after declaring awareness, 32x32 and dpi 192.
+#
+# The ladder is deliberate — per-monitor-v2 (Windows 10 1703+), then the 8.1 API, then the Vista-era
+# one — and whichever rung succeeds is logged, so "still soft" is a question about which of these
+# ran rather than another guess.
+Add-Type -Namespace AcmTray -Name Dpi -MemberDefinition @'
+[DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(System.IntPtr ctx);
+[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+[DllImport("user32.dll")] public static extern uint GetDpiForSystem();
+[DllImport("shcore.dll")] public static extern int SetProcessDpiAwareness(int value);
+'@
+
+$awareness = "not declared"
+try {
+  if ([AcmTray.Dpi]::SetProcessDpiAwarenessContext([IntPtr](-4))) { $awareness = "per-monitor-v2" }
+  elseif ([AcmTray.Dpi]::SetProcessDpiAwareness(2) -eq 0) { $awareness = "per-monitor" }
+  elseif ([AcmTray.Dpi]::SetProcessDPIAware()) { $awareness = "system" }
+} catch {
+  Write-Log ("could not declare DPI awareness: " + $_.Exception.Message)
+}
+$slot = [System.Windows.Forms.SystemInformation]::SmallIconSize.Width
+Write-Log ("display: " + $awareness + ", system dpi " + [AcmTray.Dpi]::GetDpiForSystem() + ", tray slot " + $slot + "px")
+
 # A named mutex, not a lock file: the operating system releases it if this process is killed, so a
 # crashed tray cannot lock out the next one. The refusal is logged rather than silent, because
 # "another tray is already running" and "the tray died on startup" looked identical from outside.
@@ -118,7 +147,10 @@ function Get-Health {
 <#
   The icon IS the figure.
 
-  A notification area gives sixteen pixels (measured: SmallIconSize is 16x16 at 100% scaling), so
+  A notification area gives sixteen LOGICAL pixels, and on a scaled display the shell draws that
+  slot larger — 32 physical pixels at 200% — which is why this file declares DPI awareness before it
+  asks. (The note here originally measured 16x16 at 100% scaling and concluded "sixteen pixels":
+  true there, wrong here, and the reason the figure was soft.) So
   the number worth watching — THIS turn's, which moves while the work happens — has to be drawn to
   fill that box, because a glyph four pixels wide is not a figure, it is a smudge. Two things do
   that:
@@ -170,8 +202,8 @@ function Taskbar-IsLight {
 function New-FigureIcon([string]$text, [bool]$alarm, [bool]$lightTaskbar) {
   # What the shell will actually draw, so nothing is resampled on the way into the tray.
   $box = [System.Windows.Forms.SystemInformation]::SmallIconSize.Width
-  $margin = [single]1
-  $strokeWidth = [single]1.2
+  $margin = [single]([math]::Max(1, [math]::Round($box / 16)))
+  $strokeWidth = [single]([math]::Max(1.0, $box / 13.0))
   # An outline only where the figure is the light one. A light figure needs a dark edge to stand
   # against a bar that may not be uniformly dark, and amber is bright on either theme; a dark figure
   # on a light bar needs nothing, and a white halo around it would eat strokes that are one pixel
