@@ -684,7 +684,17 @@ function trayStart() {
         "' It exists because a scheduled task cannot hold a command line this long, and because a",
         "' hidden wscript window is quieter at startup than a console would be.",
         'Set sh = CreateObject("WScript.Shell")',
-        'sh.Run "' + command + '", 0, False',
+        // TWO quoting layers, and the first version had only one. `command` is a command line,
+        // where a path containing a space needs quotes of its own; inside a VBScript string every
+        // one of those must be DOUBLED, because a single inner quote ends the string. That produced
+        // `sh.Run "... -Node "D:\Program Files\nodejs\node.exe"", 0, False` and Windows Script Host
+        // answered "statement unended" at exactly the character where the inner quote sits.
+        //
+        // It stayed invisible while every path was space-free — the DSH-bundled PowerShell and node
+        // have no spaces, so no inner quote was ever emitted — and broke the moment the Task
+        // Scheduler's own PATH resolved to `C:\Windows\System32\WindowsPowerShell\v1.0\
+        // powershell.exe` and `D:\Program Files\nodejs\node.exe`.
+        'sh.Run "' + command.split('"').join('""') + '", 0, False',
         "",
       ].join("\r\n"),
       "utf16le",

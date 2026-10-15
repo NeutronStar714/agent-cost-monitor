@@ -4,6 +4,61 @@ All notable changes to this project are documented in this file, together with t
 [README](README.md). The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.10] — 2026-10-15
+
+### Changed
+
+- **The README documents the whole program in one voice.** It now covers the notification-area
+  figure, `acm warn` and the offline rate card alongside the status line and the window, and it does
+  so as one project rather than as a base plus a contribution — which is what it is. The command
+  table gained `acm tray`, `acm warn` and `acm pricing`; the configuration table's `warnPerHour` row
+  now names all three surfaces it governs; and the tray has its own section.
+
+- **A Chinese edition: [`README.zh-CN.md`](README.zh-CN.md).** Written in Chinese rather than
+  translated into it: the argument, the caveats and the limitations read as a document someone would
+  write, not as English sentences with Chinese words substituted. Both files link to each other, and
+  the two were compared for section, limitation, command and configuration parity — 19 limitations
+  each, same identifiers, same defaults.
+
+### Notes
+
+- The limitation list grew from 17 to 19 with the two things this week's tray work earned: a
+  notification-area icon is 16 logical pixels and is the only text slot Windows offers a third-party
+  application (the Deskband API that once allowed more was removed in Windows 11), and a running tray
+  must be restarted to pick up a changed script — and holds a session mutex that makes later starts
+  leave quietly.
+
+## [0.16.9] — 2026-10-15
+
+### Fixed
+
+- **The tray launcher was one quoting layer short, and it only showed once a path contained a
+  space.** Reported as Windows Script Host refusing `tray-launch.vbs` at line 5, character 207 —
+  *statement unended* — with the file already correct as UTF-16. The generated line was:
+
+  ```
+  sh.Run "... -Node "D:\Program Files\nodejs\node.exe"", 0, False
+  ```
+
+  VBScript ends a string at the first inner `"`. The command line needs quotes of its own wherever a
+  path contains a space, and **each of those must be doubled** to live inside a VBScript string. The
+  two quoting layers had been conflated: a command line and a VBScript literal are different
+  languages, and only one of them was being satisfied.
+
+  It stayed hidden because every path used to be space-free — the DSH-bundled PowerShell and node
+  contain none, so no inner quote was ever emitted. It broke the moment the Task Scheduler's own
+  `PATH` resolved to `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` and
+  `D:\Program Files\nodejs\node.exe`. The command is now quoted for the command line, then escaped
+  for VBScript.
+
+### Notes
+
+- The login entry (`acm tray --install`) already doubled its inner quotes and was never affected.
+  That asymmetry is worth noticing: one of the two writers had it right, and the difference was
+  invisible for exactly the same reason — no spaces, no quotes, no bug.
+- Found by compiling the launcher with `cscript`, the console host, which prints a VBScript error as
+  text where `wscript` shows a modal dialog that a session without a desktop cannot see.
+
 ## [0.16.8] — 2026-10-15
 
 ### Fixed
