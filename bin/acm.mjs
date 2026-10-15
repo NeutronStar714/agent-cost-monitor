@@ -672,9 +672,14 @@ function trayStart() {
   const wrapper = join(CACHE_DIR, "tray-launch.vbs");
   try {
     mkdirSync(CACHE_DIR, { recursive: true });
+    // UTF-16 WITH a byte-order mark, never UTF-8. wscript.exe reads a .vbs as ANSI unless a BOM says
+    // otherwise, and this profile path contains characters ANSI cannot represent: the misread bytes
+    // swallowed the closing quote of the command string and Windows Script Host answered with a
+    // modal "statement unended" dialog. A modal dialog is invisible to a session without a desktop,
+    // so from here it looked exactly like a tray that starts and does nothing.
     writeFileSync(
       wrapper,
-      [
+      "\ufeff" + [
         "' acm tray launcher - written by `acm tray`.",
         "' It exists because a scheduled task cannot hold a command line this long, and because a",
         "' hidden wscript window is quieter at startup than a console would be.",
@@ -682,6 +687,7 @@ function trayStart() {
         'sh.Run "' + command + '", 0, False',
         "",
       ].join("\r\n"),
+      "utf16le",
     );
   } catch (error) {
     say("  could not write the tray launcher (" + wrapper + "): " + error.message);
@@ -778,11 +784,16 @@ function trayStatus() {
 function trayInstallStartup() {
   const port = String(resolveConfig(homedir()).port);
   const exe = powershellExe() || "powershell";
-  const body = [
-    "' acm tray — the spend figures in the notification area, started at login.",
+  // The login entry gets the same encoding treatment as the scheduled one, and for the same
+  // measured reason: wscript reads a .vbs as ANSI unless a BOM says otherwise, and a profile path
+  // with characters ANSI cannot represent swallows the closing quote of this very string — Windows
+  // Script Host then refuses the file with "statement unended" in a modal dialog that a session
+  // without a desktop cannot see. Inner quotes are doubled, which is VBScript's own escape.
+  const body = "\ufeff" + [
+    "' acm tray - the spend figures in the notification area, started at login.",
     "' Written by `acm tray --install`; remove it with `acm tray --uninstall`.",
     'Set sh = CreateObject("WScript.Shell")',
-    `sh.Run "${exe} -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""${TRAY_SCRIPT}"" -Port ${port} -Node ""${process.execPath}""", 0, False`,
+    'sh.Run "' + exe + ' -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""' + TRAY_SCRIPT + '"" -Port ' + port + ' -Node ""' + process.execPath + '""", 0, False',
     "",
   ].join("\r\n");
   if (dryRun) {
@@ -791,7 +802,7 @@ function trayInstallStartup() {
   }
   try {
     mkdirSync(dirname(TRAY_STARTUP), { recursive: true });
-    writeFileSync(TRAY_STARTUP, body);
+    writeFileSync(TRAY_STARTUP, body, "utf16le");
     say(`  at login    ${TRAY_STARTUP}`);
     return 0;
   } catch (error) {

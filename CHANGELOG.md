@@ -4,6 +4,37 @@ All notable changes to this project are documented in this file, together with t
 [README](README.md). The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.4] — 2026-10-15
+
+### Fixed
+
+- **Windows Script Host refused the launcher, and it said so only in a modal dialog.** Reported
+  with a screenshot: `tray-launch.vbs`, line 5, character 207, `800A0401` — *statement unended*.
+  `wscript.exe` reads a `.vbs` as **ANSI** unless a byte-order mark says otherwise, and this profile
+  path contains characters ANSI cannot represent, so the misread bytes swallowed the closing quote
+  of the command string. Both launchers — `acm tray`'s wrapper and the `acm tray --install` login
+  entry — are now written as **UTF-16LE with a BOM**.
+
+  This was the fourth and last cause, and the only one that said anything out loud: an error dialog
+  is invisible to a session with no interactive desktop, which is why it reached me as "the tray
+  starts and does nothing" while on the user's desktop it was a visible error box.
+
+  Verified after the change: `cscript //nologo` on the wrapper compiles and runs it with no output
+  (the console host prints compiler errors as text, which is how this was confirmable at all), and
+  the tray is alive minutes later. Its log:
+
+  ```
+  tray  starting: powershell 7.6.6, apartment STA, pid 30572
+  tray  started: port 7420, every 5000ms, powershell 7.6.6
+  tray  icon shown: quiet for 0s, window closed, turn running
+  tray  tooltip: acm · dsh · this turn ¥0.05 · last turn - · session ¥36.51
+  tray  starting: powershell 7.6.6, apartment STA, pid 17188
+  tray  another tray already holds the mutex; leaving this one to it
+  ```
+
+  The last two lines are the second instance (started deliberately, to check the dialog was gone)
+  reporting the mutex refusal — which used to be silence.
+
 ## [0.16.3] — 2026-10-15
 
 ### Fixed
