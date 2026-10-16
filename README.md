@@ -11,7 +11,8 @@ Live cost and "burn rate" for AI coding agents, on the surface each one already 
 - **`acm tray`** puts a single figure in the Windows notification area: the current turn's cost
   drawn *into* the icon, with the last completed turn, the session total and both burn rates in
   its menu. It shows itself while an agent is running and takes itself away after five minutes of
-  quiet. `acm tray --install` adds it at login.
+  quiet. `acm autostart tray` adds it at login — off by default, because a notification icon that turns up
+uninvited on a first install is a surprise rather than a feature.
 
 That status line is the *only* place this project is a single row, and it is **Claude Code
 CLI only**:
@@ -65,8 +66,8 @@ actually differs, so a rate movement is visible instead of being absorbed silent
 ```bash
 npm install -g agent-cost-monitor     # puts `acm` on your PATH
 acm install                           # Claude Code status line, /acm, config
-acm hook on                           # start the window when a session starts
-acm tray --install                    # the notification-area figure, at login (Windows)
+acm autostart panel                   # start the window when a session starts (default: on)
+acm autostart tray                    # the notification-area figure at login (default: off)
 ```
 
 Requires Node 20+ (22.5+ for the Codex SQLite cross-check). The window and the tray are **Windows
@@ -82,11 +83,11 @@ acm launch --host codex    # read Codex, and say so on screen
 
 **Claude Code gets the status line, never a window.** Its CLI and its desktop app share a single
 settings file, so a window hook cannot be limited to the desktop — and a window showing the same
-figures as a line that is already there is noise. `acm hook on` therefore *removes* any Claude Code
+figures as a line that is already there is noise. `acm autostart panel` therefore *removes* any Claude Code
 window hook an earlier version installed; the only way to get one is to ask for the desktop case
-explicitly with `acm hook on --host claude --window`.
+explicitly with `acm autostart panel on --host claude --window`.
 
-`acm hook on` installs a `SessionStart` **and** `UserPromptSubmit` hook for **Codex**, so its
+`acm autostart panel` installs a `SessionStart` **and** `UserPromptSubmit` hook for **Codex**, so its
 window comes up when you start working rather than when you remember. Codex may ask you to trust
 the hook once — it keeps a per-hook trust hash and nothing can forge it.
 
@@ -114,7 +115,7 @@ have to find.
   important end rather than the line being cut: a truncated figure reads as a smaller figure.
 - **It shows itself when there is something to say** — while a turn is running, or while a window
   is open — and hides after five minutes of quiet. The icon is not permanent furniture.
-- **`acm tray --install`** writes a login entry; **`acm tray --status`** says whether one is
+- **`acm autostart tray`** writes a login entry, and is off by default; **`acm tray --status`** says whether one is
   running; **`acm tray --stop`** ends it. `acm tray` on its own starts it now.
 
 It is started through the **Task Scheduler**, not as a child of the command that asked for it: a
@@ -166,9 +167,9 @@ prompt entry for Claude Code — and only fall back to usage samples when it rec
 | | |
 |---|---|
 | `acm install [--host claude\|dsh\|all]` | Configure a host (default: Claude Code) |
-| `acm hook on\|off\|status [--host claude\|codex\|all]` | The session-start hooks |
+| `acm autostart [panel\|tray] [on\|off]` | Start the window or the tray automatically — panel on, tray off |
 | `acm launch [--host h] [--new] [--quiet]` | Start the window |
-| `acm tray [--install\|--uninstall\|--status\|--stop]` | The notification-area figure |
+| `acm tray [--status\|--stop]` | The notification-area figure, and whether it is running |
 | `acm warn [rate]` | Show or set the burn rate the figures turn amber at |
 | `acm pricing [--refresh]` | The offline rate card: what it holds, when it changed |
 | `acm status` / `acm doctor` / `acm log [--lines N]` | What is detected, what is broken, what happened |

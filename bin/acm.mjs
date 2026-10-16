@@ -136,7 +136,7 @@ function detectCodex() {
   return {
     detected: true,
     status: hooked ? "hooks installed (the window opens on a prompt)" : "detected; no hooks yet",
-    detail: hooked ? config : `${config}  (add the hooks with: acm hook on)`,
+    detail: hooked ? config : `${config}  (add the hooks with: acm autostart panel)`,
   };
 }
 
@@ -183,7 +183,7 @@ function hookClaude(mode) {
   if (mode === "on" && !wantsWindow) {
     say("  Claude Code uses the status line, so no window hook is installed.");
     say("  (its CLI and desktop app share one settings file, so a hook would open a window in the CLI too)");
-    say("  on the desktop app and want the window as well?  acm hook on --host claude --window");
+    say("  on the desktop app and want the window as well?  acm autostart panel on --host claude --window");
   }
   const effective = mode === "on" && !wantsWindow ? "off" : mode;
   let settings;
@@ -473,7 +473,7 @@ function removeShimBlock() {
 function removeEverything({ self, keepCache }) {
   let failures = 0;
 
-  say("\nsession-start hooks");
+  say("\nautostart (panel)");
   runHookCommand("off");
 
   say("\nold auto-launch block");
@@ -483,7 +483,7 @@ function removeEverything({ self, keepCache }) {
   const commandFile = claudeCommandPath(homedir());
   failures += removePath(commandFile, "file");
 
-  say("\ntray");
+  say("\nautostart (tray)");
   failures += removePath(TRAY_STARTUP, "file");
   failures += trayStop();
 
@@ -801,7 +801,7 @@ function trayInstallStartup() {
   // without a desktop cannot see. Inner quotes are doubled, which is VBScript's own escape.
   const body = "\ufeff" + [
     "' acm tray - the spend figures in the notification area, started at login.",
-    "' Written by `acm tray --install`; remove it with `acm tray --uninstall`.",
+    "' Written by `acm autostart tray on`; remove it with `acm autostart tray off`.",
     'Set sh = CreateObject("WScript.Shell")',
     'sh.Run "' + exe + ' -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""' + TRAY_SCRIPT + '"" -Port ' + port + ' -Node ""' + process.execPath + '""", 0, False',
     "",
@@ -833,6 +833,78 @@ function trayInstallStartup() {
 const wants = (name) =>
   hostArg === "all" || hostArg === name || (hostArg === "auto" && (command === "uninstall" ? true : name === "claude"));
 
+/**
+ * Start the window and the tray automatically, or stop doing so.
+ *
+ * These were two commands — `acm hook on` for the window's session-start hooks, `acm tray
+ * --install` for the tray's login entry — which is one idea split across two places, and the split
+ * showed: the defaults lived in prose, and neither command could tell you what the other was set
+ * to. One command, two targets, defaults stated by the thing that implements them.
+ *
+ * Panel on, tray off. The window is what a session-start hook is for, and a notification icon that
+ * appears uninvited the first time someone installs the package is a surprise, not a feature.
+ */
+function autostart() {
+  const target = argv.find((a) => ["panel", "tray"].includes(a));
+  const mode = argv.find((a) => ["on", "off", "status"].includes(a));
+  const show = target === undefined || mode === "status" || flag("status");
+
+  if (show) {
+    const panel = panelHookState();
+    const trayOn = existsSync(TRAY_STARTUP);
+    say(`  panel       ${panel}`);
+    say("              recommended: on — a session start opens the window (Codex; Claude Code keeps its status line)");
+    say(`  tray        ${trayOn ? "on" : "off"}`);
+    say("              recommended: off — a login entry runs it at every login" + (trayOn ? `\n              ${TRAY_STARTUP}` : ""));
+    if (target === undefined) {
+      say("");
+      say("  acm autostart panel on|off    [--host claude|codex|all]");
+      say("  acm autostart tray on|off");
+      say("  acm tray                      start the tray now; --status, --stop");
+    }
+    return 0;
+  }
+
+  if (mode === "off") {
+    if (target === "tray") {
+      removePath(TRAY_STARTUP, "file");
+      say("  tray        autostart off");
+      say("              one that is running keeps running: acm tray --stop");
+      return 0;
+    }
+    return runHookCommand("off") === 0 ? 0 : 1;
+  }
+
+  // "on", which is also what a bare "acm autostart panel" means: naming a target is asking for it.
+  if (target === "tray") {
+    if (existsSync(TRAY_STARTUP)) {
+      say("  tray        autostart already on");
+      return 0;
+    }
+    return trayInstallStartup();
+  }
+  return runHookCommand("on") === 0 ? 0 : 1;
+}
+
+/** One line answering "would a session start the window right now", and for which hosts. */
+function panelHookState() {
+  const found = [];
+  try {
+    const settings = JSON.parse(readFileSync(CLAUDE_SETTINGS, "utf8"));
+    const entries = settings.hooks?.SessionStart ?? [];
+    if (entries.some((e) => (e.hooks ?? []).some((h) => String(h.command ?? "").includes("acm launch")))) found.push("claude");
+  } catch {
+    /* no Claude settings file, which is not the same as no hook */
+  }
+  try {
+    // The Codex hook is a TOML block, so the command string is what identifies it.
+    if (readFileSync(join(homedir(), ".codex", "config.toml"), "utf8").includes("acm launch")) found.push("codex");
+  } catch {
+    /* no Codex config */
+  }
+  return found.length === 0 ? "off" : "on  (" + found.join(", ") + ")";
+}
+
 function main() {
   const hosts = { claude: detectClaude(), dsh: detectDsh(), codex: detectCodex() };
 
@@ -842,15 +914,15 @@ function main() {
     say("  acm launch [--host h]      start the window now (--host codex points it at Codex)");
     say("                             reuses an open window; --new opens a second one");
     say("  acm tray                   the same figures in the notification area (Windows)");
-    say("                             --install also starts it at every login");
-    say("                             --status | --stop | --uninstall");
+    say("                             --status | --stop (runtime; autostart is below)");
     say("  acm status                 what is detected and configured");
     say("  acm uninstall              remove everything acm added to your machine");
     say("                             (--self also uninstalls the npm package)");
     say("                             (--keep-cache leaves the pricing cache)");
     say("  acm clean-profiles         remove an old auto-launch block, if you have one");
-    say("  acm hook on|off|status     a SessionStart hook that opens the window");
-    say("    [--host claude|codex|all]  (default: both, when their config exists)");
+    say("  acm autostart [panel|tray] [on|off]   start the window or the tray automatically");
+    say("                             panel: on by default  [--host claude|codex|all]");
+    say("                             tray:  off by default (a login entry, Windows)");
     say("  acm doctor                 check the pieces the status line needs\n");
     say("  acm pricing [--refresh]    the offline rate card: what it holds, when it changed\n");
     say("  acm warn [rate]            show or set the burn rate the figures turn amber at\n");
@@ -863,11 +935,14 @@ function main() {
   if (command === "tray") {
     if (flag("status")) return trayStatus();
     if (flag("stop")) return trayStop();
-    if (flag("uninstall")) {
-      const removed = removePath(TRAY_STARTUP, "file");
-      return trayStop() + removed;
+    // Both moved to `acm autostart tray`, beside the panel's equivalent. Answered rather than
+    // ignored: a flag that silently does nothing reads as a bug in the thing it was meant to do.
+    if (flag("install") || flag("uninstall")) {
+      say("  these flags have moved, so the two kinds of autostart sit in one place:");
+      say("    acm autostart tray on     a login entry for the tray");
+      say("    acm autostart tray off    remove it (acm tray --stop ends one that is running)");
+      return 1;
     }
-    if (flag("install")) return trayInstallStartup() + trayStart();
     return trayStart();
   }
   if (command === "clean-profiles") {
@@ -878,10 +953,13 @@ function main() {
   }
 
   if (command === "hook") {
-    const mode = argv.find((a) => ["on", "off", "status"].includes(a)) ?? "status";
-    if (mode !== "status") say(`hook ${mode}${dryRun ? " (dry run)" : ""}`);
-    return runHookCommand(mode) === 0 ? 0 : 1;
+    say("  `acm hook` is now `acm autostart panel`, so both kinds of autostart sit together:");
+    say("    acm autostart panel on|off    [--host claude|codex|all]");
+    say("    acm autostart                 show both, and the defaults");
+    return 1;
   }
+
+  if (command === "autostart") return autostart();
 
   if (command === "update") {
     // Updating means asking npm for the published version, because the installed copy is what

@@ -9,7 +9,7 @@
   同样的一组数字，外加一张燃烧速率曲线。
 - **`acm tray`**：在 Windows 通知区域放一个数字，把本回合花费**画进图标本身**，菜单里有上一个
   已完成的回合、会话累计和两个燃烧速率。助手在跑的时候它自己出现，安静五分钟后自己收起。
-  `acm tray --install` 可以让它随登录启动。
+  `acm autostart tray` 可以让它随登录启动（默认关闭——首次安装就冒出个通知图标是惊吓，不是功能）。
 
 状态栏是本项目唯一「只有一行」的形态，而且**仅限 Claude Code CLI**：
 
@@ -58,8 +58,8 @@ token 按零计价，会让一个回合看起来有价，实际被严重低估�
 ```bash
 npm install -g agent-cost-monitor     # 把 `acm` 放进 PATH
 acm install                           # Claude Code 状态栏、/acm、配置文件
-acm hook on                           # 会话开始时启动悬浮窗
-acm tray --install                    # 通知区域那个数字，随登录启动（Windows）
+acm autostart panel                   # 会话开始时启动悬浮窗（默认：开）
+acm autostart tray                    # 通知区域那个数字随登录启动（默认：关）
 ```
 
 需要 Node 20+（Codex 的 SQLite 交叉校验需要 22.5+）。悬浮窗和托盘目前**仅限 Windows**；
@@ -74,11 +74,11 @@ acm launch --host codex    # 读 Codex，并在界面上说明
 ```
 
 **Claude Code 只给状态栏，不给窗口。** 它的 CLI 和桌面版共用同一份配置文件，钩子没法只对桌面版
-生效；而且一个和状态栏显示同样数字的窗口只是噪音。因此 `acm hook on` 会**移除**早期版本装上的
+生效；而且一个和状态栏显示同样数字的窗口只是噪音。因此 `acm autostart panel` 会**移除**早期版本装上的
 Claude Code 窗口钩子；确实想要桌面版那种情况，只能显式写
-`acm hook on --host claude --window`。
+`acm autostart panel on --host claude --window`。
 
-`acm hook on` 给 **Codex** 装 `SessionStart` **和** `UserPromptSubmit` 两个钩子，所以窗口是
+`acm autostart panel` 给 **Codex** 装 `SessionStart` **和** `UserPromptSubmit` 两个钩子，所以窗口是
 你开始干活时出现，而不是等你想起它才出现。Codex 可能会让你信任这个钩子一次——它保存每个钩子的
 信任哈希，谁也伪造不了。
 
@@ -100,7 +100,7 @@ Claude Code 窗口钩子；确实想要桌面版那种情况，只能显式写
   两位小数——要对比的正是这个数字。整行 48 个字符，系统给的上限是 63；放不下时从最不重要的字段
   开始丢，而不是把这一行截断，因为被截断的数字看起来更小。
 - **有话可说的时候它才出现**——回合在跑，或者窗口开着——安静五分钟后自己隐藏。它不是常驻摆设。
-- **`acm tray --install`** 写入登录项，**`acm tray --status`** 查看是否在跑，
+- **`acm autostart tray`** 写入登录项（默认关闭），**`acm tray --status`** 查看是否在跑，
   **`acm tray --stop`** 结束它；只写 `acm tray` 就是现在启动。
 
 它是通过**任务计划程序**启动的，而不是作为这条命令的子进程：那样起的进程会在命令退出时被杀掉，
@@ -147,9 +147,9 @@ acm warn 8        # 设置，单位是数字所用的货币、每小时
 | | |
 |---|---|
 | `acm install [--host claude\|dsh\|all]` | 配置某个宿主（默认 Claude Code） |
-| `acm hook on\|off\|status [--host claude\|codex\|all]` | 会话启动钩子 |
+| `acm autostart [panel\|tray] [on\|off]` | 自动启动悬浮窗或托盘（默认：面板开、托盘关） |
 | `acm launch [--host h] [--new] [--quiet]` | 启动悬浮窗 |
-| `acm tray [--install\|--uninstall\|--status\|--stop]` | 通知区域那个数字 |
+| `acm tray [--status\|--stop]` | 通知区域那个数字及其运行状态 |
 | `acm warn [rate]` | 查看或设置数字变琥珀色的燃烧速率 |
 | `acm pricing [--refresh]` | 离线价目表：里面有什么、什么时候变的 |
 | `acm status` / `acm doctor` / `acm log [--lines N]` | 检测到什么、哪里坏了、发生过什么 |

@@ -4,6 +4,32 @@ All notable changes to this project are documented in this file, together with t
 [README](README.md). The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] — 2026-10-15
+
+### Changed
+
+- **`acm hook on|off|status` and `acm tray --install|--uninstall` are now one command:
+  `acm autostart [panel|tray] [on|off]`.** They were one idea split across two commands, and the
+  split showed: the defaults existed only in prose, and neither command could tell you what the
+  other was set to. `acm autostart` on its own reports both, names the defaults (panel on, tray
+  off) and says how to change them.
+
+  Both old spellings still answer — they say where the function went and exit non-zero, because a
+  flag that silently does nothing reads as a bug in the thing it was supposed to do. That tombstone
+  is three lines and can be removed once nothing calls it.
+
+- **`acm tray` keeps only what is about running it now** (`--status`, `--stop`). Whether it
+  comes back at the next login is autostart, and lives with the panel's equivalent.
+
+- **A small honesty fix in the same output**: the status says "recommended" rather than "default"
+  for the panel. The hook is not installed by `acm install` today — on a machine where the window
+  should come up on its own, saying "default: on" about a state nothing establishes would be a
+  claim the code cannot back.
+
+### Notes
+
+- This is a breaking change to two command spellings, hence 0.17.0 rather than another patch.
+
 ## [0.16.11] — 2026-10-15
 
 ### Fixed
