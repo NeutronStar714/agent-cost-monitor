@@ -296,21 +296,29 @@ function Set-Figure([string]$text, [bool]$alarm) {
 
 # --------------------------------------------------------------------- menu ---
 
+# Every mutation below is skipped while this menu is on screen. It is rebuilt from the tick, and
+# clearing and re-adding the items of a menu that is currently displayed is what a flash every few
+# seconds was: a left click left it open, and the next tick deleted the items underneath it. An open
+# menu keeps the last tick's figures — five seconds old at worst — and the tick after it closes
+# rebuilds it, so it is never stale by more than one interval.
 $menu = [System.Windows.Forms.ContextMenuStrip]::new()
 
 function Add-Info([string]$text) {
+  if ($menu.Visible) { return }
   $item = [System.Windows.Forms.ToolStripMenuItem]::new($text)
   $item.Enabled = $false
   $menu.Items.Add($item) | Out-Null
 }
 
 function Add-Action([string]$text, [scriptblock]$body) {
+  if ($menu.Visible) { return }
   $item = [System.Windows.Forms.ToolStripMenuItem]::new($text)
   $item.add_Click($body)
   $menu.Items.Add($item) | Out-Null
 }
 
 function Add-Separator {
+  if ($menu.Visible) { return }
   $menu.Items.Add([System.Windows.Forms.ToolStripSeparator]::new()) | Out-Null
 }
 
@@ -373,7 +381,7 @@ function Refresh-Tray {
     # look dead. Rewriting it every tick makes the file self-healing rather than a single point of
     # failure for the whole feature.
     Set-Content -Path $pidFile -Value $PID -Encoding Ascii
-    $menu.Items.Clear()
+    if (-not $menu.Visible) { $menu.Items.Clear() }
     $active = Get-Data ""
     $hosts = @{}
     foreach ($key in @("dsh", "codex", "claude")) { $hosts[$key] = Get-Data $key }

@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file, together with t
 [README](README.md). The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.1] — 2026-10-15
+
+### Fixed
+
+- **The tray menu flashed every five seconds while it was open.** Reported as a left click leaving a
+  white panel that blinked every few seconds. The cause was in `window/tray.ps1`: the five-second
+  tick began by clearing the `ContextMenuStrip` and then re-added every line, and deleting and
+  re-adding the items of a menu that is currently displayed is what the shell draws as a flash.
+
+  No mutation happens while the menu is visible now. An open menu keeps the figures from the last
+  tick — five seconds old at worst — and the tick after it closes rebuilds it, so it is never more
+  than one interval out of date. Nothing had to be cached: the tick refetches on its own.
+
+### Notes
+
+- The cadence in the report was "every 3 or so seconds"; it is five. The tray has one timer and it
+  runs every 5000 ms.
+
 ## [0.17.0] — 2026-10-15
 
 ### Changed
